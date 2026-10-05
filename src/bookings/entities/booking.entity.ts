@@ -53,15 +53,15 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
-import { AvailabilitySlot } from './availability-slot.entity';
+import { AvailabilitySlot } from '../../availability/entities/availability-slot.entity';
+import { Complaint } from '../../complaints/entities/complaint.entity';
+import { Payment } from '../../payments/entities/payment.entity';
+import { Pet } from '../../pets/entities/pet.entity';
+import { Provider } from '../../providers/entities/provider.entity';
+import { Review } from '../../reviews/entities/review.entity';
+import { Service } from '../../services/entities/service.entity';
+import { User } from '../../users/entities/user.entity';
 import { BookingStatusLog } from './booking-status-log.entity';
-import { Complaint } from './complaint.entity';
-import { Payment } from './payment.entity';
-import { Pet } from './pet.entity';
-import { Provider } from './provider.entity';
-import { Review } from './review.entity';
-import { Service } from './service.entity';
-import { User } from './user.entity';
 
 @Entity({ name: 'bookings' })
 @Check(

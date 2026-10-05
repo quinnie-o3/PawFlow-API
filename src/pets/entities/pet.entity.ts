@@ -47,9 +47,9 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
-import { Booking } from './booking.entity';
+import { Booking } from '../../bookings/entities/booking.entity';
 import { PetType } from './pet-type.entity';
-import { User } from './user.entity';
+import { User } from '../../users/entities/user.entity';
 
 @Entity({ name: 'pets' })
 @Check(

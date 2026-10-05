@@ -47,9 +47,9 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
-import { AvailabilitySlot } from './availability-slot.entity';
-import { Booking } from './booking.entity';
-import { Provider } from './provider.entity';
+import { AvailabilitySlot } from '../../availability/entities/availability-slot.entity';
+import { Booking } from '../../bookings/entities/booking.entity';
+import { Provider } from '../../providers/entities/provider.entity';
 import { ServiceCategory } from './service-category.entity';
 
 @Entity({ name: 'services' })

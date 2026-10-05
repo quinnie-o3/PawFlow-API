@@ -46,12 +46,12 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
-import { AvailabilitySlot } from './availability-slot.entity';
-import { Booking } from './booking.entity';
+import { AvailabilitySlot } from '../../availability/entities/availability-slot.entity';
+import { Booking } from '../../bookings/entities/booking.entity';
 import { ProviderStaff } from './provider-staff.entity';
 import { ProviderWorkingHour } from './provider-working-hour.entity';
-import { Service } from './service.entity';
-import { User } from './user.entity';
+import { Service } from '../../services/entities/service.entity';
+import { User } from '../../users/entities/user.entity';
 
 @Entity({ name: 'providers' })
 @Check(

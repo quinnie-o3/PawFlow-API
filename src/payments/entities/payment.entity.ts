@@ -10,7 +10,8 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
-import { Booking } from './booking.entity';
+// src/payments/entities/payment.entity.ts
+import { Booking } from '../../bookings/entities/booking.entity';
 
 @Entity({ name: 'payments' })
 @Check('chk_payments_amount', `"amount" >= 0`)

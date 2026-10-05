@@ -45,13 +45,13 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
-import { Booking } from './booking.entity';
-import { BookingStatusLog } from './booking-status-log.entity';
-import { Complaint } from './complaint.entity';
-import { Pet } from './pet.entity';
-import { Provider } from './provider.entity';
-import { ProviderStaff } from './provider-staff.entity';
-import { Review } from './review.entity';
+import { Booking } from '../../bookings/entities/booking.entity';
+import { BookingStatusLog } from '../../bookings/entities/booking-status-log.entity';
+import { Complaint } from '../../complaints/entities/complaint.entity';
+import { Pet } from '../../pets/entities/pet.entity';
+import { Provider } from '../../providers/entities/provider.entity';
+import { ProviderStaff } from '../../providers/entities/provider-staff.entity';
+import { Review } from '../../reviews/entities/review.entity';
 
 @Entity({ name: 'users' })
 @Check(

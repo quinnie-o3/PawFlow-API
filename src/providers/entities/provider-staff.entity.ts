@@ -43,7 +43,7 @@ import {
 } from 'typeorm';
 
 import { Provider } from './provider.entity';
-import { User } from './user.entity';
+import { User } from '../../users/entities/user.entity';
 
 @Entity({ name: 'provider_staff' })
 @Check('chk_provider_staff_status', `"status" IN ('ACTIVE', 'INACTIVE')`)

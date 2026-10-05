@@ -12,9 +12,9 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
-import { Booking } from './booking.entity';
-import { Provider } from './provider.entity';
-import { Service } from './service.entity';
+import { Booking } from '../../bookings/entities/booking.entity';
+import { Provider } from '../../providers/entities/provider.entity';
+import { Service } from '../../services/entities/service.entity';
 
 @Entity({ name: 'availability_slots' })
 @Check('chk_slots_time', `"start_time" < "end_time"`)

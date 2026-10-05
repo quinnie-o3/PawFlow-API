@@ -45,8 +45,9 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
-import { Booking } from './booking.entity';
-import { User } from './user.entity';
+// src/reviews/entities/review.entity.ts
+import { Booking } from '../../bookings/entities/booking.entity';
+import { User } from '../../users/entities/user.entity';
 
 @Entity({ name: 'reviews' })
 @Check(

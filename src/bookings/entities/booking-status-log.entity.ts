@@ -42,8 +42,8 @@ import {
   PrimaryGeneratedColumn,
 } from 'typeorm';
 
+import { User } from '../../users/entities/user.entity';
 import { Booking } from './booking.entity';
-import { User } from './user.entity';
 
 @Entity({ name: 'booking_status_logs' })
 @Check(
