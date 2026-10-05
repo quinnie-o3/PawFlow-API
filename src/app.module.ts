@@ -5,22 +5,14 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
-import { AvailabilitySlot } from './availability/entities/availability-slot.entity';
-import { BookingStatusLog } from './bookings/entities/booking-status-log.entity';
-import { Booking } from './bookings/entities/booking.entity';
-import { Complaint } from './complaints/entities/complaint.entity';
-import { Payment } from './payments/entities/payment.entity';
-import { PetType } from './pets/entities/pet-type.entity';
-import { Pet } from './pets/entities/pet.entity';
-import { Provider } from './providers/entities/provider.entity';
-import { ProviderStaff } from './providers/entities/provider-staff.entity';
-import { ProviderWorkingHour } from './providers/entities/provider-working-hour.entity';
-import { Review } from './reviews/entities/review.entity';
-import { ServiceCategory } from './services/entities/service-category.entity';
-import { Service } from './services/entities/service.entity';
-import { User } from './users/entities/user.entity';
+import { AvailabilityModule } from './availability/availability.module';
+import { BookingsModule } from './bookings/bookings.module';
+import { ComplaintsModule } from './complaints/complaints.module';
+import { PaymentsModule } from './payments/payments.module';
 import { PetsModule } from './pets/pets.module';
 import { ProvidersModule } from './providers/providers.module';
+import { ReviewsModule } from './reviews/reviews.module';
+import { ServicesModule } from './services/services.module';
 import { UsersModule } from './users/users.module';
 
 /**
@@ -56,31 +48,21 @@ import { UsersModule } from './users/users.module';
         password: configService.getOrThrow<string>('DB_PASSWORD'),
         database: configService.getOrThrow<string>('DB_DATABASE'),
 
-        entities: [
-          AvailabilitySlot,
-          BookingStatusLog,
-          Booking,
-          Complaint,
-          Payment,
-          PetType,
-          Pet,
-          ProviderStaff,
-          ProviderWorkingHour,
-          Provider,
-          Review,
-          ServiceCategory,
-          Service,
-          User,
-        ],
         autoLoadEntities: true,
         synchronize: false,
       }),
     }),
 
     UsersModule,
-    AuthModule,
     PetsModule,
     ProvidersModule,
+    ServicesModule,
+    AvailabilityModule,
+    BookingsModule,
+    PaymentsModule,
+    ReviewsModule,
+    ComplaintsModule,
+    AuthModule,
   ],
 
   controllers: [AppController],
