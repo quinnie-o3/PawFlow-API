@@ -1,6 +1,7 @@
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 import { AppModule } from './app.module';
 
@@ -12,6 +13,7 @@ import { AppModule } from './app.module';
  * - Applies the global `/api` route prefix.
  * - Enables CORS for frontend-backend communication.
  * - Enables global request validation and transformation.
+ * - Configures Swagger/OpenAPI documentation.
  * - Reads the application port from environment variables.
  * - Enables graceful shutdown hooks.
  */
@@ -56,6 +58,35 @@ async function bootstrap() {
     }),
   );
 
+  // Swagger / OpenAPI configuration.
+  const swaggerConfig = new DocumentBuilder()
+    .setTitle('PawFlow API')
+    .setDescription(
+      'REST API documentation for the PawFlow pet care service booking and provider management platform.',
+    )
+    .setVersion('1.0')
+    .addBearerAuth(
+      {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+      },
+      'access-token',
+    )
+    .build();
+
+  const swaggerDocument = SwaggerModule.createDocument(
+    app,
+    swaggerConfig,
+  );
+
+  SwaggerModule.setup('docs', app, swaggerDocument, {
+    useGlobalPrefix: true,
+    swaggerOptions: {
+      persistAuthorization: true,
+    },
+  });
+
   // Allows NestJS to properly clean up resources such as
   // database connections when the application shuts down.
   app.enableShutdownHooks();
@@ -64,7 +95,10 @@ async function bootstrap() {
 
   await app.listen(port);
 
-  console.log(`PawPal API is running on http://localhost:${port}/api`);
+  console.log(`PawFlow API is running on http://localhost:${port}/api`);
+  console.log(
+    `Swagger documentation is available at http://localhost:${port}/api/docs`,
+  );
 }
 
 void bootstrap();
