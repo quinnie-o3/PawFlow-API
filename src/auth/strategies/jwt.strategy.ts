@@ -24,13 +24,23 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: JwtPayload): Promise<AuthenticatedUser> {
+    console.log('[JWT] validate() called');
+    console.log('[JWT] payload:', payload);
+    console.log('[JWT] payload.sub:', payload.sub);
+
     const user = await this.usersRepository.findOne({
       where: { id: payload.sub },
     });
 
+    console.log('[JWT] user found:', !!user);
+    console.log('[JWT] user status:', user?.status);
+
     if (!user || user.status !== 'ACTIVE') {
+      console.log('[JWT] rejected by validate()');
       throw new UnauthorizedException();
     }
+
+    console.log('[JWT] authentication passed');
 
     return {
       id: user.id,
