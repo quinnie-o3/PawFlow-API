@@ -39,6 +39,9 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     OwnershipService,
   ],
   exports: [
+    // Re-export the Passport configuration so AuthGuard('jwt') can be
+    // instantiated by controllers in modules that import AuthModule.
+    PassportModule,
     AuthService,
     JwtAuthGuard,
     RolesGuard,
