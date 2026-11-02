@@ -79,6 +79,7 @@ export class AdminUsersService {
       'SUSPENDED',
       'suspend',
       'USER_SUSPENDED',
+      { rejectAdminTarget: true },
     );
   }
 
@@ -100,6 +101,7 @@ export class AdminUsersService {
     nextStatus: AdminUserStatus,
     action: string,
     activityAction: AdminActivityAction,
+    options: { rejectAdminTarget?: boolean } = {},
   ) {
     return this.dataSource.transaction(async (manager) => {
       const usersRepository = manager.getRepository(User);
@@ -111,6 +113,14 @@ export class AdminUsersService {
 
       if (!user) {
         throw new NotFoundException('User not found');
+      }
+
+      // C-07: administrators cannot be suspended through the ordinary user
+      // API. Thrown before any write, so no status change or audit record.
+      if (options.rejectAdminTarget && user.role === 'ADMIN') {
+        throw new ConflictException(
+          'Administrator accounts cannot be suspended',
+        );
       }
 
       if (user.status !== expectedStatus) {

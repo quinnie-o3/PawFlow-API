@@ -298,7 +298,6 @@ describe('Public services (F-10)', () => {
           id: '1',
           businessName: 'Paw Spa',
           address: '1 Nguyen Hue, District 1',
-          phone: '0901234567',
           description: 'Grooming studio',
           ratingAvg: '4.50',
           ratingCount: 2,
@@ -306,15 +305,17 @@ describe('Public services (F-10)', () => {
       });
     });
 
-    it('never exposes internal provider, service or category fields', async () => {
-      const [service] = await createController([
-        serviceRow('1'),
-      ]).getPublicServices();
-      const serialized = JSON.stringify(service);
+    it('never exposes internal fields or provider contact phone (list and detail)', async () => {
+      const controller = createController([serviceRow('1')]);
+      const serialized = JSON.stringify([
+        ...(await controller.getPublicServices()),
+        await controller.getPublicServiceById('1'),
+      ]);
 
       for (const field of [
         'ownerId',
         'approvalStatus',
+        'phone',
         'status',
         'providerId',
         'categoryId',

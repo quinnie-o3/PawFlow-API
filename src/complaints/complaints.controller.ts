@@ -9,6 +9,7 @@ import {
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
+  ApiConflictResponse,
   ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
@@ -49,9 +50,16 @@ export class ComplaintsController {
   @ApiUnauthorizedResponse({ description: 'Authentication is required.' })
   @ApiForbiddenResponse({
     description:
-      'Only customers can create complaints, and the booking must belong to the authenticated customer.',
+      'Only customers can create complaints. A booking owned by another customer returns 404.',
   })
-  @ApiNotFoundResponse({ description: 'Booking was not found.' })
+  @ApiNotFoundResponse({
+    description:
+      'Booking was not found or belongs to another customer.',
+  })
+  @ApiConflictResponse({
+    description:
+      'The booking is PENDING_CONFIRMATION (complaints require CONFIRMED, COMPLETED, CANCELLED, REJECTED or NO_SHOW), or an OPEN/IN_REVIEW complaint already exists for this booking.',
+  })
   createComplaint(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseBigIntIdPipe) bookingId: string,
@@ -79,7 +87,7 @@ export class ComplaintsController {
   @ApiBadRequestResponse({ description: 'Complaint ID is invalid.' })
   @ApiUnauthorizedResponse({ description: 'Authentication is required.' })
   @ApiForbiddenResponse({
-    description: 'The complaint belongs to another customer.',
+    description: 'Only customers can access complaints. A complaint owned by another customer returns 404.',
   })
   @ApiNotFoundResponse({ description: 'Complaint was not found.' })
   getMyComplaintById(

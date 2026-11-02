@@ -1,6 +1,5 @@
 import {
   ConflictException,
-  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -44,10 +43,9 @@ export class PaymentsService {
           throw new NotFoundException('Booking not found');
         }
 
+        // Another provider's booking is indistinguishable from a missing one.
         if (booking.providerId !== provider.id) {
-          throw new ForbiddenException(
-            'You do not have permission to manage payment for this booking',
-          );
+          throw new NotFoundException('Booking not found');
         }
 
         if (booking.status !== 'COMPLETED') {
@@ -133,9 +131,7 @@ export class PaymentsService {
     }
 
     if (booking.providerId !== provider.id) {
-      throw new ForbiddenException(
-        'You do not have permission to access payment for this booking',
-      );
+      throw new NotFoundException('Booking not found');
     }
 
     const payment = await paymentsRepository.findOne({

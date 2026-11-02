@@ -1,5 +1,4 @@
 import {
-  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -7,6 +6,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
 import { Provider } from '../providers/entities/provider.entity';
+import { assertProviderCanManageResources } from '../providers/provider-lifecycle.policy';
 import { CreateServiceDto } from './dto/create-service.dto';
 import { UpdateServiceDto } from './dto/update-service.dto';
 import { ServiceCategory } from './entities/service-category.entity';
@@ -31,6 +31,8 @@ export class ServicesService {
   ) {
     const provider =
       await this.getProviderByOwner(ownerUserId);
+
+    assertProviderCanManageResources(provider);
 
     await this.assertActiveCategory(dto.categoryId);
 
@@ -92,10 +94,13 @@ export class ServicesService {
     const provider =
       await this.getProviderByOwner(ownerUserId);
 
+    // Scoped to the caller's provider: another provider's service is
+    // indistinguishable from a missing one (C-01).
     const service =
       await this.servicesRepository.findOne({
         where: {
           id: serviceId,
+          providerId: provider.id,
         },
         relations: {
           category: true,
@@ -105,12 +110,6 @@ export class ServicesService {
     if (!service) {
       throw new NotFoundException(
         'Service not found',
-      );
-    }
-
-    if (service.providerId !== provider.id) {
-      throw new ForbiddenException(
-        'You do not have permission to access this service',
       );
     }
 
@@ -125,22 +124,19 @@ export class ServicesService {
     const provider =
       await this.getProviderByOwner(ownerUserId);
 
+    assertProviderCanManageResources(provider);
+
     const service =
       await this.servicesRepository.findOne({
         where: {
           id: serviceId,
+          providerId: provider.id,
         },
       });
 
     if (!service) {
       throw new NotFoundException(
         'Service not found',
-      );
-    }
-
-    if (service.providerId !== provider.id) {
-      throw new ForbiddenException(
-        'You do not have permission to update this service',
       );
     }
 
@@ -184,22 +180,19 @@ export class ServicesService {
     const provider =
       await this.getProviderByOwner(ownerUserId);
 
+    assertProviderCanManageResources(provider);
+
     const service =
       await this.servicesRepository.findOne({
         where: {
           id: serviceId,
+          providerId: provider.id,
         },
       });
 
     if (!service) {
       throw new NotFoundException(
         'Service not found',
-      );
-    }
-
-    if (service.providerId !== provider.id) {
-      throw new ForbiddenException(
-        'You do not have permission to deactivate this service',
       );
     }
 
@@ -299,10 +292,11 @@ async getPublicServiceById(serviceId: string) {
 /**
  * Explicit public projection for service discovery.
  *
- * Exposes only catalogue data and the provider's business profile
- * (business name, address, phone, description, rating). Internal fields
- * such as `provider.ownerId`, `provider.approvalStatus`, service status and
- * audit timestamps are intentionally omitted.
+ * Exposes only catalogue data and the provider's public business profile
+ * (business name, address, description, rating). Internal fields such as
+ * `provider.ownerId`, `provider.approvalStatus`, service status and audit
+ * timestamps are omitted, as is `provider.phone`: Phase 1 has no policy
+ * permitting public contact-number disclosure (same as public availability).
  */
 private toPublicServiceResponse(service: Service) {
   return {
@@ -320,7 +314,6 @@ private toPublicServiceResponse(service: Service) {
       id: service.provider.id,
       businessName: service.provider.businessName,
       address: service.provider.address,
-      phone: service.provider.phone,
       description: service.provider.description,
       ratingAvg: service.provider.ratingAvg,
       ratingCount: service.provider.ratingCount,

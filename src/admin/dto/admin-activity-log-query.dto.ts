@@ -1,6 +1,5 @@
 import { Transform } from 'class-transformer';
 import {
-  IsDateString,
   IsIn,
   IsInt,
   IsOptional,
@@ -17,7 +16,11 @@ import {
   type AdminActivityTargetType,
 } from '../admin-activity-log.constants';
 import { isPostgresBigIntId } from '../../common/pipes/parse-bigint-id.pipe';
+import { IsCalendarDateTime } from '../../common/utils/calendar-date.util';
 import { toNumberIfNumericString } from '../../common/utils/strict-input.util';
+
+const DATE_TIME_FILTER_DESCRIPTION =
+  'ISO 8601 date-time: YYYY-MM-DD (UTC midnight) or YYYY-MM-DDTHH:mm[:ss[.sss]] with optional Z or ±HH:MM offset (no offset = server local time).';
 
 export class AdminActivityLogQueryDto {
   @ApiPropertyOptional({ enum: ADMIN_ACTIVITY_ACTIONS })
@@ -52,14 +55,22 @@ export class AdminActivityLogQueryDto {
   })
   adminUserId?: string;
 
-  @ApiPropertyOptional({ format: 'date-time' })
+  @ApiPropertyOptional({
+    format: 'date-time',
+    example: '2026-10-01T00:00:00+07:00',
+    description: `Inclusive lower bound on createdAt. ${DATE_TIME_FILTER_DESCRIPTION}`,
+  })
   @IsOptional()
-  @IsDateString()
+  @IsCalendarDateTime()
   from?: string;
 
-  @ApiPropertyOptional({ format: 'date-time' })
+  @ApiPropertyOptional({
+    format: 'date-time',
+    example: '2026-10-31T23:59:59+07:00',
+    description: `Inclusive upper bound on createdAt. ${DATE_TIME_FILTER_DESCRIPTION}`,
+  })
   @IsOptional()
-  @IsDateString()
+  @IsCalendarDateTime()
   to?: string;
 
   @ApiPropertyOptional({ default: 50, minimum: 1, maximum: 100 })

@@ -64,6 +64,7 @@ import { UsersModule } from './users/users.module';
     PaymentsModule,
     ReviewsModule,
     ComplaintsModule,
+    AdminModule,
     DashboardModule,
     AuthModule,
   ],

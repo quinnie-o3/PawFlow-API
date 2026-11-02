@@ -8,7 +8,11 @@ import { ProvidersService } from './providers.service';
 
 describe('ProvidersService working-hour time ranges', () => {
   const ownerUserId = '10';
-  const provider = { id: '1', ownerId: ownerUserId } as Provider;
+  const provider = {
+    id: '1',
+    ownerId: ownerUserId,
+    approvalStatus: 'APPROVED',
+  } as Provider;
 
   let providersRepository: { findOne: jest.Mock };
   let workingHoursRepository: {

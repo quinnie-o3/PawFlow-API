@@ -50,6 +50,59 @@ export function isCalendarDateString(value: unknown): value is string {
   );
 }
 
+const CALENDAR_DATE_TIME_PATTERN =
+  /^(\d{4}-\d{2}-\d{2})(?:T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,9})?)?(Z|([+-])(\d{2}):(\d{2}))?)?$/;
+
+/** Largest real-world UTC offset (UTC+14:00 / UTC-12:00 fit within it). */
+const MAX_UTC_OFFSET_MINUTES = 14 * 60;
+
+/**
+ * Returns true for an extended ISO 8601 timestamp that `new Date()` parses
+ * without normalization:
+ * - `YYYY-MM-DD` (interpreted by `Date` as UTC midnight), or
+ * - `YYYY-MM-DDTHH:mm[:ss[.fraction]]` with optional `Z` or `±HH:MM`
+ *   (no offset means server local time, as `Date` does).
+ *
+ * Rejects impossible calendar dates (`2026-02-30`), out-of-range times
+ * (`24:00`, `:60`), offsets beyond ±14:00, and ISO forms that `Date` cannot
+ * parse (week `2026-W40`, ordinal `2026-274`, basic `20261001T100000Z`,
+ * partial `2026-10`), which would otherwise reach PostgreSQL as
+ * `"Invalid Date"` (SQLSTATE 22007).
+ */
+export function isCalendarDateTimeString(value: unknown): value is string {
+  if (typeof value !== 'string') {
+    return false;
+  }
+
+  const match = CALENDAR_DATE_TIME_PATTERN.exec(value);
+
+  if (!match || !isCalendarDateString(match[1])) {
+    return false;
+  }
+
+  const [, , hour, minute, second, zone, , offsetHour, offsetMinute] = match;
+
+  if (hour !== undefined) {
+    if (Number(hour) > 23 || Number(minute) > 59) {
+      return false;
+    }
+
+    if (second !== undefined && Number(second) > 59) {
+      return false;
+    }
+  }
+
+  if (zone !== undefined && zone !== 'Z') {
+    const offsetMinutes = Number(offsetHour) * 60 + Number(offsetMinute);
+
+    if (Number(offsetMinute) > 59 || offsetMinutes > MAX_UTC_OFFSET_MINUTES) {
+      return false;
+    }
+  }
+
+  return !Number.isNaN(new Date(value).getTime());
+}
+
 /**
  * Today's calendar date as `YYYY-MM-DD` in the server's local time zone.
  *
@@ -75,6 +128,27 @@ export function IsCalendarDate(validationOptions?: ValidationOptions) {
         defaultMessage: buildMessage(
           (eachPrefix) =>
             `${eachPrefix}$property must be a valid calendar date in YYYY-MM-DD format`,
+          validationOptions,
+        ),
+      },
+    },
+    validationOptions,
+  );
+}
+
+/**
+ * Validates a strict ISO 8601 timestamp for datetime filters
+ * (see `isCalendarDateTimeString`).
+ */
+export function IsCalendarDateTime(validationOptions?: ValidationOptions) {
+  return ValidateBy(
+    {
+      name: 'isCalendarDateTime',
+      validator: {
+        validate: (value: unknown) => isCalendarDateTimeString(value),
+        defaultMessage: buildMessage(
+          (eachPrefix) =>
+            `${eachPrefix}$property must be a valid ISO 8601 date-time (YYYY-MM-DD or YYYY-MM-DDTHH:mm[:ss[.sss]][Z|±HH:MM])`,
           validationOptions,
         ),
       },

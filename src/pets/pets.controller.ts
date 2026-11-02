@@ -107,7 +107,7 @@ export class PetsController {
   })
   @ApiForbiddenResponse({
     description:
-      'The authenticated customer does not own this pet.',
+      'Only customers can manage pets. A pet owned by another customer returns 404.',
   })
   @ApiNotFoundResponse({
     description: 'Pet was not found.',
@@ -139,7 +139,7 @@ export class PetsController {
   })
   @ApiForbiddenResponse({
     description:
-      'The authenticated customer does not own this pet.',
+      'Only customers can manage pets. A pet owned by another customer returns 404.',
   })
   @ApiNotFoundResponse({
     description: 'Pet or pet type was not found.',
@@ -174,7 +174,7 @@ export class PetsController {
   })
   @ApiForbiddenResponse({
     description:
-      'The authenticated customer does not own this pet.',
+      'Only customers can manage pets. A pet owned by another customer returns 404.',
   })
   @ApiNotFoundResponse({
     description: 'Pet was not found.',

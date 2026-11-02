@@ -105,6 +105,7 @@ export class PetsService {
     this.ownershipService.assertCustomerOwns(
       user,
       pet.ownerId,
+      'Pet not found',
     );
 
     return pet;
@@ -129,6 +130,7 @@ export class PetsService {
     this.ownershipService.assertCustomerOwns(
       user,
       pet.ownerId,
+      'Pet not found',
     );
 
     if (
@@ -188,6 +190,7 @@ export class PetsService {
     this.ownershipService.assertCustomerOwns(
       user,
       pet.ownerId,
+      'Pet not found',
     );
 
     pet.status = 'INACTIVE';

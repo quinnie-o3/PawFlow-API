@@ -60,7 +60,7 @@ export class AvailabilityController {
   })
   @ApiForbiddenResponse({
     description:
-      'Only provider owners can create slots, or the selected service belongs to another provider.',
+      'Only provider owners can create slots; REJECTED or SUSPENDED providers cannot manage availability. A service owned by another provider returns 404.',
   })
   @ApiNotFoundResponse({
     description:
@@ -124,7 +124,7 @@ export class AvailabilityController {
   })
   @ApiForbiddenResponse({
     description:
-      'The availability slot belongs to another provider.',
+      'Only provider owners can access slots (REJECTED or SUSPENDED providers cannot modify them). A slot owned by another provider returns 404.',
   })
   @ApiNotFoundResponse({
     description:
@@ -159,7 +159,7 @@ export class AvailabilityController {
   })
   @ApiForbiddenResponse({
     description:
-      'The slot or selected service belongs to another provider.',
+      'Only provider owners can update slots (REJECTED or SUSPENDED providers cannot modify them). A slot or service owned by another provider returns 404.',
   })
   @ApiNotFoundResponse({
     description:
@@ -200,7 +200,7 @@ export class AvailabilityController {
   })
   @ApiForbiddenResponse({
     description:
-      'The availability slot belongs to another provider.',
+      'Only provider owners can access slots (REJECTED or SUSPENDED providers cannot modify them). A slot owned by another provider returns 404.',
   })
   @ApiNotFoundResponse({
     description:

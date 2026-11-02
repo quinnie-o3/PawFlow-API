@@ -1,7 +1,6 @@
 import {
   BadRequestException,
   ConflictException,
-  ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
 import type { Repository } from 'typeorm';
@@ -23,7 +22,11 @@ function futureDate(daysAhead: number): string {
 
 describe('AvailabilityService', () => {
   const ownerUserId = '10';
-  const provider = { id: '1', ownerId: ownerUserId } as Provider;
+  const provider = {
+    id: '1',
+    ownerId: ownerUserId,
+    approvalStatus: 'APPROVED',
+  } as Provider;
   const activeService = {
     id: '3',
     providerId: provider.id,
@@ -37,6 +40,7 @@ describe('AvailabilityService', () => {
   let lockQueryBuilder: {
     setLock: jest.Mock;
     where: jest.Mock;
+    andWhere: jest.Mock;
     getOne: jest.Mock;
   };
   let slotsRepository: {
@@ -69,11 +73,24 @@ describe('AvailabilityService', () => {
   beforeEach(() => {
     storedSlot = persistedSlot();
 
+    // The lock query is scoped to the caller's provider, like the real
+    // `slot.providerId = :providerId` condition.
+    let scopedProviderId: string | undefined;
     lockQueryBuilder = {
       setLock: jest.fn().mockReturnThis(),
       where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn(
+        (_expression: string, params: { providerId: string }) => {
+          scopedProviderId = params.providerId;
+          return lockQueryBuilder;
+        },
+      ),
       getOne: jest.fn(() =>
-        Promise.resolve(storedSlot ? { ...storedSlot } : null),
+        Promise.resolve(
+          storedSlot && storedSlot.providerId === scopedProviderId
+            ? { ...storedSlot }
+            : null,
+        ),
       ),
     };
 
@@ -293,12 +310,12 @@ describe('AvailabilityService', () => {
       expect(slotsRepository.update).not.toHaveBeenCalled();
     });
 
-    it('rejects a slot owned by another provider with 403 and writes nothing', async () => {
+    it('hides a slot owned by another provider with the same 404 as a missing one (C-01)', async () => {
       storedSlot = persistedSlot({ providerId: '999' });
 
       await expect(
         service.updateMySlot(ownerUserId, '7', { capacity: 5 }),
-      ).rejects.toBeInstanceOf(ForbiddenException);
+      ).rejects.toThrow(new NotFoundException('Availability slot not found'));
       expect(slotsRepository.update).not.toHaveBeenCalled();
     });
 
@@ -343,12 +360,12 @@ describe('AvailabilityService', () => {
       });
     });
 
-    it('rejects a slot owned by another provider with 403 and writes nothing', async () => {
+    it('hides a slot owned by another provider with the same 404 as a missing one (C-01)', async () => {
       storedSlot = persistedSlot({ providerId: '999' });
 
       await expect(
         service.deactivateMySlot(ownerUserId, '7'),
-      ).rejects.toBeInstanceOf(ForbiddenException);
+      ).rejects.toThrow(new NotFoundException('Availability slot not found'));
       expect(slotsRepository.update).not.toHaveBeenCalled();
     });
   });

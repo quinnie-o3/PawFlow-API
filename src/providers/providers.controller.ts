@@ -126,7 +126,7 @@ export class ProvidersController {
   })
   @ApiForbiddenResponse({
     description:
-      'Only provider owners can access this resource.',
+      'Only provider owners can update their profile, and a SUSPENDED provider cannot update it.',
   })
   @ApiNotFoundResponse({
     description: 'Provider profile was not found.',
@@ -147,7 +147,7 @@ export class ProvidersController {
   @ApiCreatedResponse({ description: 'Staff member added successfully.' })
   @ApiBadRequestResponse({ description: 'Request validation failed or the target account is inactive.' })
   @ApiUnauthorizedResponse({ description: 'Authentication is required.' })
-  @ApiForbiddenResponse({ description: 'Only provider owners can manage staff.' })
+  @ApiForbiddenResponse({ description: 'Only provider owners can manage staff (REJECTED or SUSPENDED providers cannot add staff).' })
   @ApiNotFoundResponse({ description: 'Provider profile or target user was not found.' })
   @ApiConflictResponse({ description: 'The user is not eligible for staff assignment or is already associated with a provider.' })
   addMyStaff(
@@ -162,7 +162,7 @@ export class ProvidersController {
   @ApiOperation({ summary: 'Get staff members for my provider' })
   @ApiOkResponse({ description: 'Provider staff returned successfully.' })
   @ApiUnauthorizedResponse({ description: 'Authentication is required.' })
-  @ApiForbiddenResponse({ description: 'Only provider owners can manage staff.' })
+  @ApiForbiddenResponse({ description: 'Only provider owners can manage staff (REJECTED or SUSPENDED providers cannot add staff).' })
   @ApiNotFoundResponse({ description: 'Provider profile was not found.' })
   getMyStaff(@CurrentUser() user: AuthenticatedUser) {
     return this.providersService.getMyStaff(user.id);
@@ -174,7 +174,7 @@ export class ProvidersController {
   @ApiOkResponse({ description: 'Provider staff record returned successfully.' })
   @ApiBadRequestResponse({ description: 'Staff ID is not a valid positive integer.' })
   @ApiUnauthorizedResponse({ description: 'Authentication is required.' })
-  @ApiForbiddenResponse({ description: 'Only the owning provider can access this staff record.' })
+  @ApiForbiddenResponse({ description: 'Only provider owners can access staff records. A staff record of another provider returns 404.' })
   @ApiNotFoundResponse({ description: 'Provider profile or staff record was not found.' })
   getMyStaffById(
     @CurrentUser() user: AuthenticatedUser,
@@ -189,7 +189,7 @@ export class ProvidersController {
   @ApiOkResponse({ description: 'Provider staff record updated successfully.' })
   @ApiBadRequestResponse({ description: 'Request validation failed or the user account is inactive.' })
   @ApiUnauthorizedResponse({ description: 'Authentication is required.' })
-  @ApiForbiddenResponse({ description: 'Only the owning provider can update this staff record.' })
+  @ApiForbiddenResponse({ description: 'Only provider owners can update staff records; REJECTED or SUSPENDED providers cannot. A staff record of another provider returns 404.' })
   @ApiNotFoundResponse({ description: 'Provider profile, staff record, or user account was not found.' })
   @ApiConflictResponse({ description: 'The underlying user account has an incompatible role.' })
   updateMyStaff(
@@ -211,7 +211,7 @@ export class ProvidersController {
   @ApiNoContentResponse({ description: 'Provider staff record deactivated successfully.' })
   @ApiBadRequestResponse({ description: 'Staff ID is not a valid positive integer.' })
   @ApiUnauthorizedResponse({ description: 'Authentication is required.' })
-  @ApiForbiddenResponse({ description: 'Only the owning provider can deactivate this staff record.' })
+  @ApiForbiddenResponse({ description: 'Only provider owners can deactivate staff records; REJECTED or SUSPENDED providers cannot. A staff record of another provider returns 404.' })
   @ApiNotFoundResponse({ description: 'Provider profile, staff record, or user account was not found.' })
   async deactivateMyStaff(
     @CurrentUser() user: AuthenticatedUser,
@@ -236,7 +236,7 @@ export class ProvidersController {
   })
   @ApiForbiddenResponse({
     description:
-      'Only provider owners can manage working hours.',
+      'Only provider owners can manage working hours (REJECTED or SUSPENDED providers cannot create them).',
   })
   @ApiNotFoundResponse({
     description: 'Provider profile was not found.',
@@ -270,7 +270,7 @@ export class ProvidersController {
   })
   @ApiForbiddenResponse({
     description:
-      'Only provider owners can manage working hours.',
+      'Only provider owners can manage working hours (REJECTED or SUSPENDED providers cannot create them).',
   })
   @ApiNotFoundResponse({
     description: 'Provider profile was not found.',
@@ -301,7 +301,7 @@ export class ProvidersController {
   })
   @ApiForbiddenResponse({
     description:
-      'Only the owning provider can update this working-hour entry.',
+      'Only provider owners can update working hours; REJECTED or SUSPENDED providers cannot. An entry of another provider returns 404.',
   })
   @ApiNotFoundResponse({
     description:
@@ -344,7 +344,7 @@ export class ProvidersController {
   })
   @ApiForbiddenResponse({
     description:
-      'Only the owning provider can deactivate this working-hour entry.',
+      'Only provider owners can deactivate working hours; REJECTED or SUSPENDED providers cannot. An entry of another provider returns 404.',
   })
   @ApiNotFoundResponse({
     description:

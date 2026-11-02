@@ -54,7 +54,7 @@ export class ReviewsController {
   })
   @ApiForbiddenResponse({
     description:
-      'Only customers can submit reviews, and the booking must belong to the authenticated customer.',
+      'Only customers can submit reviews. A booking owned by another customer returns 404.',
   })
   @ApiNotFoundResponse({
     description: 'Booking or provider was not found.',

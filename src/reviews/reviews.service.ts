@@ -1,6 +1,5 @@
 import {
   ConflictException,
-  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -38,10 +37,9 @@ export class ReviewsService {
           throw new NotFoundException('Booking not found');
         }
 
+        // Another customer's booking is indistinguishable from a missing one.
         if (booking.customerId !== customerId) {
-          throw new ForbiddenException(
-            'You do not have permission to review this booking',
-          );
+          throw new NotFoundException('Booking not found');
         }
 
         if (booking.status !== 'COMPLETED') {
@@ -144,8 +142,11 @@ export class ReviewsService {
     const providersRepository = this.dataSource.getRepository(Provider);
     const reviewsRepository = this.dataSource.getRepository(Review);
 
+    // Only APPROVED providers are publicly visible. PENDING, REJECTED,
+    // SUSPENDED and missing providers share one 404 so the response does not
+    // reveal whether a non-approved provider exists.
     const provider = await providersRepository.findOne({
-      where: { id: providerId },
+      where: { id: providerId, approvalStatus: 'APPROVED' },
     });
 
     if (!provider) {

@@ -1,7 +1,6 @@
 import {
   BadRequestException,
   ConflictException,
-  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -10,6 +9,10 @@ import { DataSource, Repository } from 'typeorm';
 
 import type { AuthenticatedUser } from '../auth/interfaces/authenticated-user.interface';
 import { assertStartTimeBeforeEndTime } from '../common/utils/time-of-day.util';
+import {
+  assertProviderCanManageResources,
+  assertProviderCanUpdateProfile,
+} from './provider-lifecycle.policy';
 import { User } from '../users/entities/user.entity';
 import { CreateProviderStaffDto } from './dto/create-provider-staff.dto';
 import { CreateProviderDto } from './dto/create-provider.dto';
@@ -150,6 +153,8 @@ export class ProvidersService {
       );
     }
 
+    assertProviderCanUpdateProfile(provider);
+
     if (
       updateProviderDto.businessName !== undefined
     ) {
@@ -205,6 +210,8 @@ export class ProvidersService {
               'Provider profile not found',
             );
           }
+
+          assertProviderCanManageResources(provider);
 
           if (
             createProviderStaffDto.userId ===
@@ -310,22 +317,19 @@ export class ProvidersService {
     const provider =
       await this.getMyProvider(ownerUserId);
 
+    // Scoped to the caller's provider: another provider's staff record is
+    // indistinguishable from a missing one (C-01).
     const staff =
       await this.providerStaffRepository.findOne({
         where: {
           id: staffId,
+          providerId: provider.id,
         },
       });
 
     if (!staff) {
       throw new NotFoundException(
         'Provider staff record not found',
-      );
-    }
-
-    if (staff.providerId !== provider.id) {
-      throw new ForbiddenException(
-        'You do not have permission to access this staff record',
       );
     }
 
@@ -361,22 +365,19 @@ export class ProvidersService {
           );
         }
 
+        assertProviderCanManageResources(provider);
+
         const staff =
           await staffRepository.findOne({
             where: {
               id: staffId,
+              providerId: provider.id,
             },
           });
 
         if (!staff) {
           throw new NotFoundException(
             'Provider staff record not found',
-          );
-        }
-
-        if (staff.providerId !== provider.id) {
-          throw new ForbiddenException(
-            'You do not have permission to update this staff record',
           );
         }
 
@@ -483,22 +484,19 @@ export class ProvidersService {
           );
         }
 
+        assertProviderCanManageResources(provider);
+
         const staff =
           await staffRepository.findOne({
             where: {
               id: staffId,
+              providerId: provider.id,
             },
           });
 
         if (!staff) {
           throw new NotFoundException(
             'Provider staff record not found',
-          );
-        }
-
-        if (staff.providerId !== provider.id) {
-          throw new ForbiddenException(
-            'You do not have permission to deactivate this staff record',
           );
         }
 
@@ -533,6 +531,8 @@ export class ProvidersService {
   dto: CreateProviderWorkingHourDto,
 ) {
   const provider = await this.getMyProvider(ownerUserId);
+
+  assertProviderCanManageResources(provider);
 
   this.assertValidWorkingHourRange(
     dto.startTime,
@@ -589,22 +589,20 @@ async updateMyWorkingHour(
 ) {
   const provider = await this.getMyProvider(ownerUserId);
 
+  assertProviderCanManageResources(provider);
+
+  // Another provider's entry is indistinguishable from a missing one (C-01).
   const workingHour =
     await this.providerWorkingHoursRepository.findOne({
       where: {
         id: workingHourId,
+        providerId: provider.id,
       },
     });
 
   if (!workingHour) {
     throw new NotFoundException(
       'Provider working-hour record not found',
-    );
-  }
-
-  if (workingHour.providerId !== provider.id) {
-    throw new ForbiddenException(
-      'You do not have permission to update this working-hour record',
     );
   }
 
@@ -656,22 +654,19 @@ async deactivateMyWorkingHour(
 ): Promise<void> {
   const provider = await this.getMyProvider(ownerUserId);
 
+  assertProviderCanManageResources(provider);
+
   const workingHour =
     await this.providerWorkingHoursRepository.findOne({
       where: {
         id: workingHourId,
+        providerId: provider.id,
       },
     });
 
   if (!workingHour) {
     throw new NotFoundException(
       'Provider working-hour record not found',
-    );
-  }
-
-  if (workingHour.providerId !== provider.id) {
-    throw new ForbiddenException(
-      'You do not have permission to deactivate this working-hour record',
     );
   }
 

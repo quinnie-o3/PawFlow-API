@@ -58,16 +58,18 @@ export class ReviewQueriesController {
   @ApiOperation({
     summary: 'Get public reviews for a provider',
     description:
-      'Returns only visible reviews belonging to the specified provider.',
+      'Public endpoint (no authentication required). Returns only visible reviews of an APPROVED provider.',
   })
   @ApiOkResponse({
-    description: 'Public provider reviews returned successfully.',
+    description:
+      'Public provider reviews returned successfully. Returns an empty array when the approved provider has no visible reviews.',
   })
   @ApiBadRequestResponse({
     description: 'Provider ID is invalid.',
   })
   @ApiNotFoundResponse({
-    description: 'Provider was not found.',
+    description:
+      'Provider was not found or is not publicly visible (PENDING, REJECTED or SUSPENDED).',
   })
   getPublicProviderReviews(
     @Param('providerId', ParseBigIntIdPipe) providerId: string,
