@@ -62,14 +62,14 @@ export class AdminUsersController {
   @Patch(':id/suspend')
   @ApiOperation({
     summary: 'Suspend an active user account',
-    description: 'Only ACTIVE accounts can be suspended. Administrators cannot suspend themselves.',
+    description: 'Only ACTIVE non-administrator accounts can be suspended. Administrators cannot suspend themselves or other administrators.',
   })
   @ApiOkResponse({ description: 'User suspended successfully.' })
   @ApiBadRequestResponse({ description: 'User ID is invalid.' })
   @ApiUnauthorizedResponse({ description: 'Authentication is required.' })
   @ApiForbiddenResponse({ description: 'Only administrators can suspend users.' })
   @ApiNotFoundResponse({ description: 'User was not found.' })
-  @ApiConflictResponse({ description: 'Only ACTIVE users can be suspended, and self-suspension is not allowed.' })
+  @ApiConflictResponse({ description: 'Only ACTIVE users can be suspended; self-suspension and suspending another ADMIN are not allowed.' })
   suspendUser(
     @CurrentUser() admin: AuthenticatedUser,
     @Param('id', ParseBigIntIdPipe) userId: string,

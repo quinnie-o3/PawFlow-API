@@ -1,7 +1,6 @@
 import {
   BadRequestException,
   ConflictException,
-  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -10,6 +9,7 @@ import { Repository } from 'typeorm';
 
 import { assertStartTimeBeforeEndTime } from '../common/utils/time-of-day.util';
 import { Provider } from '../providers/entities/provider.entity';
+import { assertProviderCanManageResources } from '../providers/provider-lifecycle.policy';
 import { Service } from '../services/entities/service.entity';
 import { CreateAvailabilitySlotDto } from './dto/create-availability-slot.dto';
 import { UpdateAvailabilitySlotDto } from './dto/update-availability-slot.dto';
@@ -34,6 +34,8 @@ export class AvailabilityService {
   ) {
     const provider =
       await this.getProviderByOwner(ownerUserId);
+
+    assertProviderCanManageResources(provider);
 
     await this.assertOwnedActiveService(
       provider.id,
@@ -104,10 +106,13 @@ export class AvailabilityService {
     const provider =
       await this.getProviderByOwner(ownerUserId);
 
+    // Scoped to the caller's provider: another provider's slot is
+    // indistinguishable from a missing one (C-01).
     const slot =
       await this.availabilitySlotsRepository.findOne({
         where: {
           id: slotId,
+          providerId: provider.id,
         },
         relations: {
           service: true,
@@ -117,12 +122,6 @@ export class AvailabilityService {
     if (!slot) {
       throw new NotFoundException(
         'Availability slot not found',
-      );
-    }
-
-    if (slot.providerId !== provider.id) {
-      throw new ForbiddenException(
-        'You do not have permission to access this availability slot',
       );
     }
 
@@ -137,6 +136,8 @@ export class AvailabilityService {
     const provider =
       await this.getProviderByOwner(ownerUserId);
 
+    assertProviderCanManageResources(provider);
+
     try {
       return await this.availabilitySlotsRepository.manager.transaction(
         async (manager) => {
@@ -149,13 +150,8 @@ export class AvailabilityService {
           const slot = await this.findLockedSlot(
             slotsRepository,
             slotId,
+            provider.id,
           );
-
-          if (slot.providerId !== provider.id) {
-            throw new ForbiddenException(
-              'You do not have permission to update this availability slot',
-            );
-          }
 
           const changes = await this.buildSlotUpdate(
             provider.id,
@@ -280,6 +276,8 @@ export class AvailabilityService {
     const provider =
       await this.getProviderByOwner(ownerUserId);
 
+    assertProviderCanManageResources(provider);
+
     await this.availabilitySlotsRepository.manager.transaction(
       async (manager) => {
         const slotsRepository =
@@ -287,13 +285,8 @@ export class AvailabilityService {
         const slot = await this.findLockedSlot(
           slotsRepository,
           slotId,
+          provider.id,
         );
-
-        if (slot.providerId !== provider.id) {
-          throw new ForbiddenException(
-            'You do not have permission to deactivate this availability slot',
-          );
-        }
 
         // Soft deactivate. Never delete booking-related slot history.
         // Only status is written so a concurrent bookedCount is preserved.
@@ -305,14 +298,21 @@ export class AvailabilityService {
     );
   }
 
+  /**
+   * Locks the caller's own slot. Scoping by provider means another
+   * provider's slot is never locked and yields the same 404 as a missing
+   * slot (C-01).
+   */
   private async findLockedSlot(
     slotsRepository: Repository<AvailabilitySlot>,
     slotId: string,
+    providerId: string,
   ): Promise<AvailabilitySlot> {
     const slot = await slotsRepository
       .createQueryBuilder('slot')
       .setLock('pessimistic_write')
       .where('slot.id = :slotId', { slotId })
+      .andWhere('slot.providerId = :providerId', { providerId })
       .getOne();
 
     if (!slot) {
@@ -347,22 +347,18 @@ export class AvailabilityService {
     providerId: string,
     serviceId: string,
   ): Promise<Service> {
+    // Another provider's service is indistinguishable from a missing one.
     const service =
       await this.servicesRepository.findOne({
         where: {
           id: serviceId,
+          providerId,
         },
       });
 
     if (!service) {
       throw new NotFoundException(
         'Service not found',
-      );
-    }
-
-    if (service.providerId !== providerId) {
-      throw new ForbiddenException(
-        'The service belongs to another provider',
       );
     }
 

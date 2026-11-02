@@ -106,7 +106,7 @@ export class BookingsController {
   @ApiBadRequestResponse({ description: 'Booking ID is invalid.' })
   @ApiUnauthorizedResponse({ description: 'Authentication is required.' })
   @ApiForbiddenResponse({
-    description: 'The booking belongs to another customer.',
+    description: 'Only customers can access their bookings. A booking owned by another customer returns 404.',
   })
   @ApiNotFoundResponse({ description: 'Booking was not found.' })
   getMyBookingById(
@@ -131,7 +131,7 @@ export class BookingsController {
   })
   @ApiUnauthorizedResponse({ description: 'Authentication is required.' })
   @ApiForbiddenResponse({
-    description: 'The booking belongs to another customer.',
+    description: 'Only customers can access their bookings. A booking owned by another customer returns 404.',
   })
   @ApiNotFoundResponse({
     description: 'Booking or availability slot was not found.',
@@ -174,7 +174,7 @@ export class BookingsController {
   @ApiUnauthorizedResponse({ description: 'Authentication is required.' })
   @ApiForbiddenResponse({
     description:
-      'The booking belongs to another provider or the staff association is inactive.',
+      'Only provider owners or active provider staff can manage provider bookings. A booking owned by another provider returns 404.',
   })
   @ApiNotFoundResponse({
     description: 'Booking or provider profile was not found.',
@@ -198,7 +198,7 @@ export class BookingsController {
   @ApiUnauthorizedResponse({ description: 'Authentication is required.' })
   @ApiForbiddenResponse({
     description:
-      'The booking belongs to another provider or the staff association is inactive.',
+      'Only provider owners or active provider staff can manage provider bookings. A booking owned by another provider returns 404.',
   })
   @ApiNotFoundResponse({ description: 'Booking or provider profile was not found.' })
   @ApiConflictResponse({
@@ -227,7 +227,7 @@ export class BookingsController {
   @ApiUnauthorizedResponse({ description: 'Authentication is required.' })
   @ApiForbiddenResponse({
     description:
-      'The booking belongs to another provider or the staff association is inactive.',
+      'Only provider owners or active provider staff can manage provider bookings. A booking owned by another provider returns 404.',
   })
   @ApiNotFoundResponse({
     description: 'Booking, slot, or provider profile was not found.',
@@ -256,7 +256,7 @@ export class BookingsController {
   @ApiUnauthorizedResponse({ description: 'Authentication is required.' })
   @ApiForbiddenResponse({
     description:
-      'The booking belongs to another provider or the staff association is inactive.',
+      'Only provider owners or active provider staff can manage provider bookings. A booking owned by another provider returns 404.',
   })
   @ApiNotFoundResponse({ description: 'Booking or provider profile was not found.' })
   @ApiConflictResponse({
@@ -283,7 +283,7 @@ export class BookingsController {
   @ApiUnauthorizedResponse({ description: 'Authentication is required.' })
   @ApiForbiddenResponse({
     description:
-      'The booking belongs to another provider or the staff association is inactive.',
+      'Only provider owners or active provider staff can manage provider bookings. A booking owned by another provider returns 404.',
   })
   @ApiNotFoundResponse({ description: 'Booking or provider profile was not found.' })
   @ApiConflictResponse({

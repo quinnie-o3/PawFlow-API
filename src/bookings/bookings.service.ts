@@ -179,9 +179,7 @@ export class BookingsService {
     }
 
     if (booking.customerId !== customerId) {
-      throw new ForbiddenException(
-        'You do not have permission to access this booking',
-      );
+      throw new NotFoundException('Booking not found');
     }
 
     booking.statusLogs.sort(
@@ -457,14 +455,14 @@ export class BookingsService {
     return booking;
   }
 
+  // C-01: another provider's or customer's booking is indistinguishable
+  // from a missing one. Role and staff-association failures remain 403.
   private assertProviderCanManageBooking(
     booking: Booking,
     providerId: string,
   ): void {
     if (booking.providerId !== providerId) {
-      throw new ForbiddenException(
-        'You do not have permission to access this booking',
-      );
+      throw new NotFoundException('Booking not found');
     }
   }
 
@@ -473,9 +471,7 @@ export class BookingsService {
     customerId: string,
   ): void {
     if (booking.customerId !== customerId) {
-      throw new ForbiddenException(
-        'You do not have permission to access this booking',
-      );
+      throw new NotFoundException('Booking not found');
     }
   }
 

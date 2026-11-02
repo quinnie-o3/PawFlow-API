@@ -54,7 +54,7 @@ export class PaymentsController {
   })
   @ApiForbiddenResponse({
     description:
-      'Only the provider owner may manage payment for bookings belonging to their provider.',
+      'Only provider owners may manage payments. A booking owned by another provider returns 404.',
   })
   @ApiNotFoundResponse({
     description: 'Provider profile or booking was not found.',
@@ -118,7 +118,7 @@ export class PaymentsController {
   })
   @ApiForbiddenResponse({
     description:
-      'The booking belongs to another provider.',
+      'Only provider owners can access provider payments. A booking owned by another provider returns 404.',
   })
   @ApiNotFoundResponse({
     description:

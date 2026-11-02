@@ -1,4 +1,4 @@
-import { ConflictException, ForbiddenException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import type { DataSource } from 'typeorm';
 
 import { Booking } from '../bookings/entities/booking.entity';
@@ -164,14 +164,14 @@ describe('PaymentsService.upsertProviderPayment', () => {
   });
 
   describe('existing guards', () => {
-    it('rejects a booking owned by another provider with 403', async () => {
+    it('hides a booking owned by another provider with the same 404 as a missing one (C-01)', async () => {
       booking.providerId = '999';
 
       await expect(
         service.upsertProviderPayment(ownerUserId, '20', {
           paymentStatus: 'PAID',
         }),
-      ).rejects.toBeInstanceOf(ForbiddenException);
+      ).rejects.toThrow(new NotFoundException('Booking not found'));
       expect(paymentsRepository.save).not.toHaveBeenCalled();
     });
 

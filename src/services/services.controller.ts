@@ -57,7 +57,7 @@ export class ServicesController {
     description: 'Authentication is required.',
   })
   @ApiForbiddenResponse({
-    description: 'Only provider owners can create services.',
+    description: 'Only provider owners can create services; REJECTED or SUSPENDED providers cannot manage services.',
   })
   @ApiNotFoundResponse({
     description:
@@ -112,7 +112,7 @@ export class ServicesController {
   })
   @ApiForbiddenResponse({
     description:
-      'The service belongs to another provider.',
+      'Only provider owners can access services (REJECTED or SUSPENDED providers cannot modify them). A service owned by another provider returns 404.',
   })
   @ApiNotFoundResponse({
     description:
@@ -146,7 +146,7 @@ export class ServicesController {
   })
   @ApiForbiddenResponse({
     description:
-      'The service belongs to another provider.',
+      'Only provider owners can access services (REJECTED or SUSPENDED providers cannot modify them). A service owned by another provider returns 404.',
   })
   @ApiNotFoundResponse({
     description:
@@ -182,7 +182,7 @@ export class ServicesController {
   })
   @ApiForbiddenResponse({
     description:
-      'The service belongs to another provider.',
+      'Only provider owners can access services (REJECTED or SUSPENDED providers cannot modify them). A service owned by another provider returns 404.',
   })
   @ApiNotFoundResponse({
     description:
