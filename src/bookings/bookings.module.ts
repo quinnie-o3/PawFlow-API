@@ -9,6 +9,7 @@ import { ProviderStaff } from '../providers/entities/provider-staff.entity';
 import { Service } from '../services/entities/service.entity';
 import { BookingsController } from './bookings.controller';
 import { BookingsService } from './bookings.service';
+import { BookingIdempotencyKey } from './entities/booking-idempotency-key.entity';
 import { BookingStatusLog } from './entities/booking-status-log.entity';
 import { Booking } from './entities/booking.entity';
 
@@ -17,6 +18,7 @@ import { Booking } from './entities/booking.entity';
     TypeOrmModule.forFeature([
       Booking,
       BookingStatusLog,
+      BookingIdempotencyKey,
       Pet,
       AvailabilitySlot,
       Service,

@@ -53,7 +53,7 @@ export class AvailabilityController {
   })
   @ApiBadRequestResponse({
     description:
-      'Request validation failed, the service is inactive, the date is in the past, or the time range is invalid.',
+      'Request validation failed, the service is inactive, the date is in the past, the slot has already started (its start must be strictly after the current server-local time), or the time range is invalid.',
   })
   @ApiUnauthorizedResponse({
     description: 'Authentication is required.',
@@ -68,7 +68,7 @@ export class AvailabilityController {
   })
   @ApiConflictResponse({
     description:
-      'An identical availability slot already exists.',
+      "An identical availability slot already exists, the slot is shorter than its service's durationMinutes, or the slot does not fit entirely within one of the provider's active working hours for that weekday.",
   })
   createMySlot(
     @CurrentUser() user: AuthenticatedUser,
@@ -152,7 +152,7 @@ export class AvailabilityController {
   })
   @ApiBadRequestResponse({
     description:
-      'Request validation failed, capacity is invalid, date is in the past, or the time range is invalid.',
+      'Request validation failed, capacity is invalid, date is in the past, the moved or reopened slot has already started, or the time range is invalid. Closing, cancelling or changing the capacity of a past slot is allowed.',
   })
   @ApiUnauthorizedResponse({
     description: 'Authentication is required.',
@@ -167,7 +167,7 @@ export class AvailabilityController {
   })
   @ApiConflictResponse({
     description:
-      'The slot already has bookings and its schedule cannot be changed, or an identical slot already exists.',
+      "The slot already has bookings and its schedule cannot be changed, an identical slot already exists, or the new service/date/time (or reopening the slot) is shorter than the service's durationMinutes or does not fit within the provider's active working hours.",
   })
   updateMySlot(
     @CurrentUser() user: AuthenticatedUser,

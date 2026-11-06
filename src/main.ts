@@ -4,6 +4,7 @@ import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 import { AppModule } from './app.module';
+import { IDEMPOTENT_REPLAYED_HEADER } from './bookings/booking-idempotency';
 import { GLOBAL_VALIDATION_PIPE_OPTIONS } from './common/pipes/validation-pipe.options';
 
 /**
@@ -39,6 +40,8 @@ async function bootstrap() {
   app.enableCors({
     origin: configService.get<string>('FRONTEND_URL') ?? 'http://localhost:3001',
     credentials: true,
+    // Lets the browser read the P2-07 booking replay marker.
+    exposedHeaders: [IDEMPOTENT_REPLAYED_HEADER],
   });
 
   // Global validation for incoming request DTOs.

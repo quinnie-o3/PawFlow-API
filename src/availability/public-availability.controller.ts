@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Param,
+  Query,
 } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
@@ -11,8 +12,10 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 
+import { paginatedSchema } from '../common/dto/paginated-schema';
 import { ParseBigIntIdPipe } from '../common/pipes/parse-bigint-id.pipe';
 import { AvailabilityService } from './availability.service';
+import { PublicAvailabilitySearchQueryDto } from './dto/public-availability-search-query.dto';
 
 const PUBLIC_SLOT_SCHEMA = {
   type: 'object',
@@ -91,6 +94,31 @@ export class PublicAvailabilityController {
   })
   getPublicSlots() {
     return this.availabilityService.getPublicSlots();
+  }
+
+  // Declared before `:id` so that `search` is not parsed as a slot ID.
+  @Get('search')
+  @ApiOperation({
+    summary: 'Search publicly bookable availability slots',
+    description:
+      'Paginated slots of one provider and/or service, ordered by date, start time, then ID. Only bookable slots are returned: OPEN with remaining capacity, of an APPROVED provider, ACTIVE service and ACTIVE category, and not yet started (dated after today, or today with a start time not before the current server-local minute, matching booking validation). A hidden, foreign or nonexistent provider/service returns an empty page. Public endpoint; no authentication required.',
+  })
+  @ApiOkResponse({
+    description: 'Search results. An empty `items` array is a valid result.',
+    schema: paginatedSchema(PUBLIC_SLOT_SCHEMA, {
+      providerId: { type: 'string', nullable: true },
+      serviceId: { type: 'string', nullable: true },
+      date: { type: 'string', format: 'date', nullable: true },
+      fromDate: { type: 'string', format: 'date', nullable: true },
+      toDate: { type: 'string', format: 'date', nullable: true },
+    }),
+  })
+  @ApiBadRequestResponse({
+    description:
+      'Neither providerId nor serviceId was given, an ID or date is malformed, date is combined with fromDate/toDate, toDate is before fromDate, page/limit is out of range, or an unknown parameter was sent.',
+  })
+  searchPublicSlots(@Query() query: PublicAvailabilitySearchQueryDto) {
+    return this.availabilityService.searchPublicSlots(query);
   }
 
   @Get(':id')

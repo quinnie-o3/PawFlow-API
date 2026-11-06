@@ -243,7 +243,7 @@ export class ProvidersController {
   })
   @ApiConflictResponse({
     description:
-      'An identical working-hour entry already exists.',
+      'An identical working-hour entry already exists, or the new active entry overlaps another active entry of the same weekday. Intervals are half-open [startTime, endTime), so adjacent entries (08:00-12:00 and 12:00-17:00) are allowed and are not merged.',
   })
   createMyWorkingHour(
     @CurrentUser() user: AuthenticatedUser,
@@ -309,7 +309,7 @@ export class ProvidersController {
   })
   @ApiConflictResponse({
     description:
-      'An identical working-hour entry already exists.',
+      'An identical working-hour entry already exists; the changed or reactivated entry would overlap another active entry of the same weekday (half-open [startTime, endTime), adjacent entries allowed); or the change would leave an active (PENDING_CONFIRMATION or CONFIRMED) booking dated today or later outside working hours. Nothing is changed in that case.',
   })
   updateMyWorkingHour(
     @CurrentUser() user: AuthenticatedUser,
@@ -349,6 +349,10 @@ export class ProvidersController {
   @ApiNotFoundResponse({
     description:
       'Provider profile or working-hour entry was not found.',
+  })
+  @ApiConflictResponse({
+    description:
+      'Deactivating the entry would leave an active (PENDING_CONFIRMATION or CONFIRMED) booking dated today or later outside working hours. Nothing is changed in that case.',
   })
   async deactivateMyWorkingHour(
     @CurrentUser() user: AuthenticatedUser,

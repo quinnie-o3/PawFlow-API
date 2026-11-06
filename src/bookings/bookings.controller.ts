@@ -4,6 +4,7 @@ import {
   Get,
   Param,
   Post,
+  Res,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -12,12 +13,14 @@ import {
   ApiConflictResponse,
   ApiCreatedResponse,
   ApiForbiddenResponse,
+  ApiHeader,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
+import type { Response } from 'express';
 
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -25,14 +28,45 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import type { AuthenticatedUser } from '../auth/interfaces/authenticated-user.interface';
 import { ParseBigIntIdPipe } from '../common/pipes/parse-bigint-id.pipe';
+import {
+  IDEMPOTENCY_KEY_HEADER,
+  IDEMPOTENT_REPLAYED_HEADER,
+  IdempotencyKey,
+} from './booking-idempotency';
+import {
+  type CustomerBookingDetailView,
+  type CustomerBookingView,
+  type ProviderBookingDetailView,
+  type ProviderBookingView,
+  toCustomerBookingDetailView,
+  toCustomerBookingView,
+  toProviderBookingDetailView,
+  toProviderBookingView,
+} from './booking-views';
 import { BookingsService } from './bookings.service';
+import {
+  CUSTOMER_BOOKING_DETAIL_SCHEMA,
+  CUSTOMER_BOOKING_SCHEMA,
+  PROVIDER_BOOKING_DETAIL_SCHEMA,
+  PROVIDER_BOOKING_SCHEMA,
+} from './dto/booking-response.schema';
 import { CancelBookingDto } from './dto/cancel-booking.dto';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { NoShowBookingDto } from './dto/no-show-booking.dto';
 import { RejectBookingDto } from './dto/reject-booking.dto';
 
+const CUSTOMER_FORBIDDEN =
+  'Only customers can access their bookings. A booking owned by another customer returns 404.';
+const PROVIDER_FORBIDDEN =
+  'Only provider owners or active provider staff can manage provider bookings (inactive staff and other roles get 403). A booking owned by another provider returns 404.';
+
+/**
+ * Every handler returns an explicit projection (`booking-views.ts`), never a
+ * TypeORM entity. Status-changing POST actions keep Nest's default 201.
+ */
 @ApiTags('Bookings')
 @ApiBearerAuth('access-token')
+@ApiUnauthorizedResponse({ description: 'Authentication is required.' })
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('bookings')
 export class BookingsController {
@@ -45,18 +79,42 @@ export class BookingsController {
   @ApiOperation({
     summary: 'Create a booking',
     description:
-      'Creates a PENDING_CONFIRMATION booking for an available slot and reserves one unit of slot capacity.',
+      'Creates a PENDING_CONFIRMATION booking for an available slot and reserves one unit of slot capacity. ' +
+      'Send an `Idempotency-Key` header to make retries safe: repeating the request with the same key and the same ' +
+      'payload returns the booking created by the first request (in its current state) instead of creating another one, ' +
+      'even if the slot has since become full or started. Failed attempts are not stored, so retrying them re-runs the booking. ' +
+      'A concurrent request with the same key waits until the first one finishes. Without the header every request is a new booking attempt. ' +
+      'Created and replayed bookings use the same response schema as `GET /bookings/mine`.',
+  })
+  @ApiHeader({
+    name: IDEMPOTENCY_KEY_HEADER,
+    required: false,
+    description:
+      'Client-generated key identifying one booking attempt (e.g. a UUID v4). 16-128 characters from A-Z, a-z, 0-9, "-" and "_"; ' +
+      'compared exactly. Scoped to the authenticated customer; reuse it only to retry the same attempt. Keys do not expire.',
+    schema: {
+      type: 'string',
+      pattern: '^[A-Za-z0-9_-]{16,128}$',
+      minLength: 16,
+      maxLength: 128,
+      example: '3f0c8a52-6c1e-4f5b-9a7e-2d4b8c1e9f00',
+    },
   })
   @ApiCreatedResponse({
     description:
-      'Booking created and slot capacity reserved successfully.',
+      'Booking created and slot capacity reserved successfully, or (with a reused Idempotency-Key and the same payload) the original booking returned in its current state without reserving capacity again.',
+    headers: {
+      [IDEMPOTENT_REPLAYED_HEADER]: {
+        description:
+          'Present only when Idempotency-Key was sent: `true` if the booking was created by an earlier request with that key, `false` if this request created it.',
+        schema: { type: 'string', enum: ['true', 'false'] },
+      },
+    },
+    schema: CUSTOMER_BOOKING_SCHEMA,
   })
   @ApiBadRequestResponse({
     description:
-      'Request validation failed, selected pet/service/provider is invalid, or the slot is in the past.',
-  })
-  @ApiUnauthorizedResponse({
-    description: 'Authentication is required.',
+      'Request validation failed, Idempotency-Key is malformed or longer than 128 characters, selected pet/service/provider is invalid, or the slot is in the past or has already started (its start instant is not strictly after the current server-local time).',
   })
   @ApiForbiddenResponse({
     description: 'Only customers can create bookings.',
@@ -66,13 +124,31 @@ export class BookingsController {
   })
   @ApiConflictResponse({
     description:
-      'The slot is closed/full or cannot currently accept another booking.',
+      "The slot is closed/full, cannot currently accept another booking, is outside the provider's current working hours, or is shorter than the service duration; " +
+      'or the Idempotency-Key was already used by this customer with a different payload; ' +
+      'or a request with the same Idempotency-Key is still in progress (retry the same request).',
   })
-  createBooking(
+  async createBooking(
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: CreateBookingDto,
-  ) {
-    return this.bookingsService.createBooking(user.id, dto);
+    @IdempotencyKey() idempotencyKey: string | undefined,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<CustomerBookingView> {
+    if (idempotencyKey === undefined) {
+      return toCustomerBookingView(
+        await this.bookingsService.createBooking(user.id, dto),
+      );
+    }
+
+    const { booking, replayed } =
+      await this.bookingsService.createBookingIdempotently(
+        user.id,
+        dto,
+        idempotencyKey,
+      );
+    response.setHeader(IDEMPOTENT_REPLAYED_HEADER, String(replayed));
+
+    return toCustomerBookingView(booking);
   }
 
   @Get('mine')
@@ -80,19 +156,21 @@ export class BookingsController {
   @ApiOperation({
     summary: 'Get my booking history',
     description:
-      'Returns all bookings created by the authenticated customer.',
+      'Returns all bookings created by the authenticated customer, newest first.',
   })
   @ApiOkResponse({
     description: 'Customer booking history returned successfully.',
-  })
-  @ApiUnauthorizedResponse({
-    description: 'Authentication is required.',
+    schema: { type: 'array', items: CUSTOMER_BOOKING_SCHEMA },
   })
   @ApiForbiddenResponse({
     description: 'Only customers can access customer booking history.',
   })
-  getMyBookings(@CurrentUser() user: AuthenticatedUser) {
-    return this.bookingsService.getMyBookings(user.id);
+  async getMyBookings(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<CustomerBookingView[]> {
+    const bookings = await this.bookingsService.getMyBookings(user.id);
+
+    return bookings.map(toCustomerBookingView);
   }
 
   @Get('mine/:id')
@@ -102,18 +180,20 @@ export class BookingsController {
     description:
       'Returns one booking and its status history for the authenticated customer.',
   })
-  @ApiOkResponse({ description: 'Booking returned successfully.' })
-  @ApiBadRequestResponse({ description: 'Booking ID is invalid.' })
-  @ApiUnauthorizedResponse({ description: 'Authentication is required.' })
-  @ApiForbiddenResponse({
-    description: 'Only customers can access their bookings. A booking owned by another customer returns 404.',
+  @ApiOkResponse({
+    description: 'Booking returned successfully.',
+    schema: CUSTOMER_BOOKING_DETAIL_SCHEMA,
   })
+  @ApiBadRequestResponse({ description: 'Booking ID is invalid.' })
+  @ApiForbiddenResponse({ description: CUSTOMER_FORBIDDEN })
   @ApiNotFoundResponse({ description: 'Booking was not found.' })
-  getMyBookingById(
+  async getMyBookingById(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseBigIntIdPipe) bookingId: string,
-  ) {
-    return this.bookingsService.getMyBookingById(user.id, bookingId);
+  ): Promise<CustomerBookingDetailView> {
+    return toCustomerBookingDetailView(
+      await this.bookingsService.getMyBookingById(user.id, bookingId),
+    );
   }
 
   @Post('mine/:id/cancel')
@@ -123,16 +203,15 @@ export class BookingsController {
     description:
       'Changes a PENDING_CONFIRMATION or CONFIRMED booking to CANCELLED and releases one unit of slot capacity.',
   })
-  @ApiOkResponse({
-    description: 'Booking cancelled and slot capacity released successfully.',
+  @ApiCreatedResponse({
+    description:
+      'Booking cancelled and slot capacity released successfully; returns the updated booking.',
+    schema: CUSTOMER_BOOKING_SCHEMA,
   })
   @ApiBadRequestResponse({
     description: 'Booking ID or cancellation reason is invalid.',
   })
-  @ApiUnauthorizedResponse({ description: 'Authentication is required.' })
-  @ApiForbiddenResponse({
-    description: 'Only customers can access their bookings. A booking owned by another customer returns 404.',
-  })
+  @ApiForbiddenResponse({ description: CUSTOMER_FORBIDDEN })
   @ApiNotFoundResponse({
     description: 'Booking or availability slot was not found.',
   })
@@ -140,12 +219,14 @@ export class BookingsController {
     description:
       'Only PENDING_CONFIRMATION or CONFIRMED bookings can be cancelled, and slot capacity must be available to release.',
   })
-  cancelMyBooking(
+  async cancelMyBooking(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseBigIntIdPipe) bookingId: string,
     @Body() dto?: CancelBookingDto,
-  ) {
-    return this.bookingsService.cancelMyBooking(user.id, bookingId, dto);
+  ): Promise<CustomerBookingView> {
+    return toCustomerBookingView(
+      await this.bookingsService.cancelMyBooking(user.id, bookingId, dto),
+    );
   }
 
   @Get('provider')
@@ -153,37 +234,47 @@ export class BookingsController {
   @ApiOperation({
     summary: 'Get bookings for my provider',
     description:
-      'Returns bookings belonging to the provider managed by the authenticated owner or active staff member.',
+      'Returns bookings belonging to the provider managed by the authenticated owner or active staff member, newest first.',
   })
-  @ApiOkResponse({ description: 'Provider bookings returned successfully.' })
-  @ApiUnauthorizedResponse({ description: 'Authentication is required.' })
+  @ApiOkResponse({
+    description: 'Provider bookings returned successfully.',
+    schema: { type: 'array', items: PROVIDER_BOOKING_SCHEMA },
+  })
   @ApiForbiddenResponse({
     description:
       'Only provider owners or active provider staff can access provider bookings.',
   })
   @ApiNotFoundResponse({ description: 'Provider profile was not found.' })
-  getProviderBookings(@CurrentUser() user: AuthenticatedUser) {
-    return this.bookingsService.getProviderBookings(user);
+  async getProviderBookings(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<ProviderBookingView[]> {
+    const bookings = await this.bookingsService.getProviderBookings(user);
+
+    return bookings.map(toProviderBookingView);
   }
 
   @Get('provider/:id')
   @Roles('PROVIDER_OWNER', 'PROVIDER_STAFF')
-  @ApiOperation({ summary: 'Get one booking for my provider' })
-  @ApiOkResponse({ description: 'Provider booking returned successfully.' })
-  @ApiBadRequestResponse({ description: 'Booking ID is invalid.' })
-  @ApiUnauthorizedResponse({ description: 'Authentication is required.' })
-  @ApiForbiddenResponse({
-    description:
-      'Only provider owners or active provider staff can manage provider bookings. A booking owned by another provider returns 404.',
+  @ApiOperation({
+    summary: 'Get one booking for my provider',
+    description: 'Returns one provider booking and its status history.',
   })
+  @ApiOkResponse({
+    description: 'Provider booking returned successfully.',
+    schema: PROVIDER_BOOKING_DETAIL_SCHEMA,
+  })
+  @ApiBadRequestResponse({ description: 'Booking ID is invalid.' })
+  @ApiForbiddenResponse({ description: PROVIDER_FORBIDDEN })
   @ApiNotFoundResponse({
     description: 'Booking or provider profile was not found.',
   })
-  getProviderBookingById(
+  async getProviderBookingById(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseBigIntIdPipe) bookingId: string,
-  ) {
-    return this.bookingsService.getProviderBookingById(user, bookingId);
+  ): Promise<ProviderBookingDetailView> {
+    return toProviderBookingDetailView(
+      await this.bookingsService.getProviderBookingById(user, bookingId),
+    );
   }
 
   @Post('provider/:id/confirm')
@@ -191,24 +282,28 @@ export class BookingsController {
   @ApiOperation({
     summary: 'Confirm a pending booking',
     description:
-      'Changes a PENDING_CONFIRMATION booking to CONFIRMED. The slot capacity remains reserved.',
+      'Changes a PENDING_CONFIRMATION booking to CONFIRMED. The slot capacity remains reserved. ' +
+      'Only an APPROVED provider can confirm: a PENDING, REJECTED or SUSPENDED provider (owner or staff) gets 403 and the booking is unchanged.',
   })
-  @ApiOkResponse({ description: 'Booking confirmed successfully.' })
+  @ApiCreatedResponse({
+    description: 'Booking confirmed successfully; returns the updated booking.',
+    schema: PROVIDER_BOOKING_SCHEMA,
+  })
   @ApiBadRequestResponse({ description: 'Booking ID is invalid.' })
-  @ApiUnauthorizedResponse({ description: 'Authentication is required.' })
   @ApiForbiddenResponse({
-    description:
-      'Only provider owners or active provider staff can manage provider bookings. A booking owned by another provider returns 404.',
+    description: `${PROVIDER_FORBIDDEN} The provider is not APPROVED (PENDING, REJECTED or SUSPENDED); checked after ownership and before the booking status.`,
   })
   @ApiNotFoundResponse({ description: 'Booking or provider profile was not found.' })
   @ApiConflictResponse({
     description: 'Only a PENDING_CONFIRMATION booking can be confirmed.',
   })
-  confirmProviderBooking(
+  async confirmProviderBooking(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseBigIntIdPipe) bookingId: string,
-  ) {
-    return this.bookingsService.confirmProviderBooking(user, bookingId);
+  ): Promise<ProviderBookingView> {
+    return toProviderBookingView(
+      await this.bookingsService.confirmProviderBooking(user, bookingId),
+    );
   }
 
   @Post('provider/:id/reject')
@@ -216,19 +311,17 @@ export class BookingsController {
   @ApiOperation({
     summary: 'Reject a pending booking',
     description:
-      'Changes a PENDING_CONFIRMATION booking to REJECTED and releases one unit of slot capacity.',
+      'Changes a PENDING_CONFIRMATION booking to REJECTED and releases one unit of slot capacity. Allowed whatever the provider approval status, so a SUSPENDED provider can wind down pending requests.',
   })
-  @ApiOkResponse({
-    description: 'Booking rejected and slot capacity released successfully.',
+  @ApiCreatedResponse({
+    description:
+      'Booking rejected and slot capacity released successfully; returns the updated booking.',
+    schema: PROVIDER_BOOKING_SCHEMA,
   })
   @ApiBadRequestResponse({
     description: 'Booking ID or rejection reason is invalid.',
   })
-  @ApiUnauthorizedResponse({ description: 'Authentication is required.' })
-  @ApiForbiddenResponse({
-    description:
-      'Only provider owners or active provider staff can manage provider bookings. A booking owned by another provider returns 404.',
-  })
+  @ApiForbiddenResponse({ description: PROVIDER_FORBIDDEN })
   @ApiNotFoundResponse({
     description: 'Booking, slot, or provider profile was not found.',
   })
@@ -236,12 +329,14 @@ export class BookingsController {
     description:
       'Only a PENDING_CONFIRMATION booking can be rejected, and slot capacity must be available to release.',
   })
-  rejectProviderBooking(
+  async rejectProviderBooking(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseBigIntIdPipe) bookingId: string,
     @Body() dto?: RejectBookingDto,
-  ) {
-    return this.bookingsService.rejectProviderBooking(user, bookingId, dto);
+  ): Promise<ProviderBookingView> {
+    return toProviderBookingView(
+      await this.bookingsService.rejectProviderBooking(user, bookingId, dto),
+    );
   }
 
   @Post('provider/:id/complete')
@@ -249,24 +344,25 @@ export class BookingsController {
   @ApiOperation({
     summary: 'Complete a confirmed booking',
     description:
-      'Changes a CONFIRMED booking to COMPLETED. Slot capacity remains unchanged because the appointment was consumed.',
+      'Changes a CONFIRMED booking to COMPLETED. Slot capacity remains unchanged because the appointment was consumed. Allowed whatever the provider approval status (including SUSPENDED).',
   })
-  @ApiOkResponse({ description: 'Booking completed successfully.' })
+  @ApiCreatedResponse({
+    description: 'Booking completed successfully; returns the updated booking.',
+    schema: PROVIDER_BOOKING_SCHEMA,
+  })
   @ApiBadRequestResponse({ description: 'Booking ID is invalid.' })
-  @ApiUnauthorizedResponse({ description: 'Authentication is required.' })
-  @ApiForbiddenResponse({
-    description:
-      'Only provider owners or active provider staff can manage provider bookings. A booking owned by another provider returns 404.',
-  })
+  @ApiForbiddenResponse({ description: PROVIDER_FORBIDDEN })
   @ApiNotFoundResponse({ description: 'Booking or provider profile was not found.' })
   @ApiConflictResponse({
     description: 'Only a CONFIRMED booking can be completed.',
   })
-  completeProviderBooking(
+  async completeProviderBooking(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseBigIntIdPipe) bookingId: string,
-  ) {
-    return this.bookingsService.completeProviderBooking(user, bookingId);
+  ): Promise<ProviderBookingView> {
+    return toProviderBookingView(
+      await this.bookingsService.completeProviderBooking(user, bookingId),
+    );
   }
 
   @Post('provider/:id/no-show')
@@ -274,26 +370,28 @@ export class BookingsController {
   @ApiOperation({
     summary: 'Mark a confirmed booking as no-show',
     description:
-      'Changes a CONFIRMED booking to NO_SHOW. Slot capacity remains unchanged because the appointment time was consumed.',
+      'Changes a CONFIRMED booking to NO_SHOW. Slot capacity remains unchanged because the appointment time was consumed. Allowed whatever the provider approval status (including SUSPENDED).',
   })
-  @ApiOkResponse({ description: 'Booking marked as no-show successfully.' })
+  @ApiCreatedResponse({
+    description:
+      'Booking marked as no-show successfully; returns the updated booking.',
+    schema: PROVIDER_BOOKING_SCHEMA,
+  })
   @ApiBadRequestResponse({
     description: 'Booking ID or no-show reason is invalid.',
   })
-  @ApiUnauthorizedResponse({ description: 'Authentication is required.' })
-  @ApiForbiddenResponse({
-    description:
-      'Only provider owners or active provider staff can manage provider bookings. A booking owned by another provider returns 404.',
-  })
+  @ApiForbiddenResponse({ description: PROVIDER_FORBIDDEN })
   @ApiNotFoundResponse({ description: 'Booking or provider profile was not found.' })
   @ApiConflictResponse({
     description: 'Only a CONFIRMED booking can be marked as no-show.',
   })
-  noShowProviderBooking(
+  async noShowProviderBooking(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseBigIntIdPipe) bookingId: string,
     @Body() dto?: NoShowBookingDto,
-  ) {
-    return this.bookingsService.noShowProviderBooking(user, bookingId, dto);
+  ): Promise<ProviderBookingView> {
+    return toProviderBookingView(
+      await this.bookingsService.noShowProviderBooking(user, bookingId, dto),
+    );
   }
 }

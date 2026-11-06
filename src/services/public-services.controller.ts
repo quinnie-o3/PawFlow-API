@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Param,
+  Query,
 } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
@@ -11,7 +12,12 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 
+import { paginatedSchema } from '../common/dto/paginated-schema';
 import { ParseBigIntIdPipe } from '../common/pipes/parse-bigint-id.pipe';
+import {
+  PUBLIC_SERVICE_SORTS,
+  PublicServiceSearchQueryDto,
+} from './dto/public-service-search-query.dto';
 import { ServicesService } from './services.service';
 
 const PUBLIC_SERVICE_SCHEMA = {
@@ -81,6 +87,34 @@ export class PublicServicesController {
   })
   getPublicServices() {
     return this.servicesService.getPublicServices();
+  }
+
+  // Declared before `:id` so that `search` is not parsed as a service ID.
+  @Get('search')
+  @ApiOperation({
+    summary: 'Search publicly available services',
+    description:
+      'Paginated, server-side search over active services of approved providers in active categories. Keyword terms match service name, service description, category name or provider business name (case-insensitive). Unknown or malformed query parameters return 400. Public endpoint; no authentication required.',
+  })
+  @ApiOkResponse({
+    description: 'Search results. An empty `items` array is a valid result.',
+    schema: paginatedSchema(PUBLIC_SERVICE_SCHEMA, {
+      q: { type: 'string', nullable: true },
+      categoryId: { type: 'string', nullable: true },
+      providerId: { type: 'string', nullable: true },
+      minPrice: { type: 'number', nullable: true },
+      maxPrice: { type: 'number', nullable: true },
+      minRating: { type: 'number', nullable: true },
+      location: { type: 'string', nullable: true },
+      sort: { type: 'string', enum: [...PUBLIC_SERVICE_SORTS] },
+    }),
+  })
+  @ApiBadRequestResponse({
+    description:
+      'A query parameter is unknown, malformed or out of range (e.g. minPrice > maxPrice, limit > 50, unsupported sort).',
+  })
+  searchPublicServices(@Query() query: PublicServiceSearchQueryDto) {
+    return this.servicesService.searchPublicServices(query);
   }
 
   @Get(':id')
