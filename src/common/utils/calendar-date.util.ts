@@ -118,6 +118,17 @@ export function getTodayDateString(now: Date = new Date()): string {
   return `${year}-${month}-${day}`;
 }
 
+/**
+ * Current local time of day as `HH:mm`, in the same server time zone as
+ * `getTodayDateString`. Booking compares slot start times against this value.
+ */
+export function getCurrentTimeOfDayString(now: Date = new Date()): string {
+  const hour = String(now.getHours()).padStart(2, '0');
+  const minute = String(now.getMinutes()).padStart(2, '0');
+
+  return `${hour}:${minute}`;
+}
+
 /** Validates a strict `YYYY-MM-DD` calendar date (no time or offset). */
 export function IsCalendarDate(validationOptions?: ValidationOptions) {
   return ValidateBy(

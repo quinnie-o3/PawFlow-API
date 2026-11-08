@@ -204,7 +204,21 @@ describe('Public services (F-10)', () => {
       expect(handlers.sort()).toEqual([
         'getPublicServiceById',
         'getPublicServices',
+        'searchPublicServices',
       ]);
+      for (const handler of handlers) {
+        expect(
+          Reflect.getMetadata(
+            METHOD_METADATA,
+            (
+              PublicServicesController.prototype as unknown as Record<
+                string,
+                object
+              >
+            )[handler],
+          ),
+        ).toBe(RequestMethod.GET);
+      }
     });
 
     it('does not collide with ServicesController parameterized routes', () => {

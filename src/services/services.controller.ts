@@ -13,6 +13,7 @@ import {
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
+  ApiConflictResponse,
   ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiNoContentResponse,
@@ -151,6 +152,10 @@ export class ServicesController {
   @ApiNotFoundResponse({
     description:
       'Provider profile, service, or active category was not found.',
+  })
+  @ApiConflictResponse({
+    description:
+      'durationMinutes was increased beyond the length of an upcoming slot of this service that already has PENDING_CONFIRMATION or CONFIRMED bookings. Slots without active bookings are not changed; slots shorter than the new duration stop being offered or bookable.',
   })
   updateMyService(
     @CurrentUser() user: AuthenticatedUser,
