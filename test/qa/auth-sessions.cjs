@@ -19,7 +19,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { randomUUID } = require('crypto');
-const { ROOT, sleep, prepareDatabase, dropDatabase, createApp, createApi } = require('./qa-env.cjs');
+const { ROOT, sleep, prepareDatabase, dropDatabase, createApp, createApi, sourceMigrationCount } = require('./qa-env.cjs');
 const bcrypt = require(path.join(ROOT, 'node_modules', 'bcrypt'));
 const jsonwebtoken = require(path.join(ROOT, 'node_modules', 'jsonwebtoken'));
 
@@ -62,7 +62,7 @@ async function main() {
   try {
     // ------------------------------------------------------------ schema
     section('0. Schema');
-    check('QA database recreated with all 10 source migrations and 0 pending DDL', migrations.length === 10 && migrations.at(-1) === 'CreateAuthSessions1794103044835' && pendingDdl.length === 0, { migrations, pendingDdl });
+    check(`QA database recreated with all ${migrations.length} source migrations (incl. CreateAuthSessions) and 0 pending DDL`, migrations.length === sourceMigrationCount() && migrations.includes('CreateAuthSessions1794103044835') && pendingDdl.length === 0, { migrations, pendingDdl });
     const cons = (await db.query(`select conname from pg_constraint where conrelid in ('auth_sessions'::regclass, 'auth_refresh_tokens'::regclass) order by 1`)).rows.map((r) => r.conname);
     check('auth tables carry the expected PK/FK/unique/check constraints', ['chk_auth_refresh_tokens_hash', 'chk_auth_sessions_revocation', 'chk_auth_sessions_revoked_reason', 'fk_auth_refresh_tokens_session', 'fk_auth_sessions_user', 'uq_auth_refresh_tokens_hash'].every((c) => cons.includes(c)), cons);
     await db.query(`insert into users(full_name, email, password_hash, role, status) values ('QA Admin', $1, $2, 'ADMIN', 'ACTIVE')`, [mail('admin'), await bcrypt.hash(PASSWORD, 10)]);

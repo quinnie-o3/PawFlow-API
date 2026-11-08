@@ -75,5 +75,5 @@ Lock order: token refresh takes user `FOR SHARE` → session `FOR UPDATE` → to
 
 - Expired and revoked rows are not purged (no cleanup job yet); session count per user is not capped.
 - No rate limiting on `/auth/login` and `/auth/refresh` (brute force is only slowed by bcrypt).
-- No password-change / reset flow exists yet; when added it must call `revokeUserSessions(…)`.
+- Password change / reset (P3-BE02) revoke every session with `PASSWORD_CHANGED` / `PASSWORD_RESET`; see `account-recovery.md`.
 - `ipAddress` is `request.ip` (no proxy trust configured).

@@ -2,6 +2,7 @@ import { ConflictException } from '@nestjs/common';
 import type { DataSource } from 'typeorm';
 
 import { AuthSession } from '../auth/entities/auth-session.entity';
+import { AuthUserToken } from '../auth/entities/auth-user-token.entity';
 import { User } from '../users/entities/user.entity';
 import { AdminActivityLogService } from './admin-activity-log.service';
 import { AdminUsersService } from './admin-users.service';
@@ -14,6 +15,10 @@ describe('AdminUsersService suspension (C-07)', () => {
   let record: jest.Mock;
   // Session revocations issued inside the transaction (P3-BE01).
   let revokeSessions: jest.Mock;
+  // One-time token revocations issued inside the transaction (P3-BE02).
+  let revokeTokens: jest.Mock;
+  // Order of writes inside the transaction.
+  let writes: string[];
   let service: AdminUsersService;
 
   beforeEach(() => {
@@ -54,11 +59,18 @@ describe('AdminUsersService suspension (C-07)', () => {
       save,
     };
 
-    revokeSessions = jest.fn().mockResolvedValue({ affected: 2 });
+    writes = [];
+    revokeSessions = jest.fn(() => (writes.push('sessions'), Promise.resolve({ affected: 2 })));
+    revokeTokens = jest.fn(() => (writes.push('tokens'), Promise.resolve({ affected: 1 })));
     const sessionsRepository = { update: revokeSessions };
+    const tokensRepository = { update: revokeTokens };
     const manager = {
       getRepository: jest.fn((entity: unknown) =>
-        entity === AuthSession ? sessionsRepository : usersRepository,
+        entity === AuthSession
+          ? sessionsRepository
+          : entity === AuthUserToken
+            ? tokensRepository
+            : usersRepository,
       ),
     };
     const dataSource = {
@@ -126,16 +138,42 @@ describe('AdminUsersService suspension (C-07)', () => {
     expect(changes.revokedAt).toBeInstanceOf(Date);
   });
 
+  it('revokes every outstanding reset/verification link after the sessions, in the same transaction (P3-BE02)', async () => {
+    await service.suspendUser(adminUserId, '3');
+
+    expect(revokeTokens).toHaveBeenCalledTimes(1);
+    const [criteria, changes] = revokeTokens.mock.calls[0] as unknown as [
+      Record<string, unknown>,
+      Record<string, unknown>,
+    ];
+    expect(criteria).toMatchObject({ userId: '3' });
+    expect(criteria).not.toHaveProperty('purpose');
+    expect(JSON.stringify(criteria.consumedAt)).toContain('isNull');
+    expect(JSON.stringify(criteria.revokedAt)).toContain('isNull');
+    expect(changes.revokedAt).toBeInstanceOf(Date);
+    expect(changes.revokedAt).toEqual(revokeSessions.mock.calls[0][1].revokedAt);
+    expect(writes).toEqual(['sessions', 'tokens']);
+  });
+
+  it('fails the whole suspension (no audit record) when token revocation fails', async () => {
+    revokeTokens.mockRejectedValueOnce(new Error('injected'));
+
+    await expect(service.suspendUser(adminUserId, '3')).rejects.toThrow('injected');
+    expect(record).not.toHaveBeenCalled();
+  });
+
   it('revokes nothing when the suspension is rejected', async () => {
     await expect(service.suspendUser(adminUserId, '2')).rejects.toBeInstanceOf(ConflictException);
 
     expect(revokeSessions).not.toHaveBeenCalled();
+    expect(revokeTokens).not.toHaveBeenCalled();
   });
 
-  it('does not touch sessions on reactivation (old sessions stay revoked)', async () => {
+  it('does not touch sessions or links on reactivation (old ones stay revoked)', async () => {
     await service.reactivateUser(adminUserId, '5');
 
     expect(revokeSessions).not.toHaveBeenCalled();
+    expect(revokeTokens).not.toHaveBeenCalled();
   });
 
   it('does not restrict reactivation (unchanged)', async () => {

@@ -22,10 +22,12 @@ import {
 } from './auth-session.util';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { EmailVerificationService } from './email-verification.service';
 import { AuthRefreshToken } from './entities/auth-refresh-token.entity';
 import { AuthSession, type SessionRevokeReason } from './entities/auth-session.entity';
 import { AuthenticatedUser } from './interfaces/authenticated-user.interface';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
+import { BCRYPT_ROUNDS } from './password-policy';
 
 /** Client details recorded on a session for the session list. */
 export interface SessionClientInfo {
@@ -63,6 +65,8 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly dataSource: DataSource,
     private readonly configService: ConfigService,
+    // P3-BE02: optional so tests can construct the service without e-mail.
+    private readonly emailVerification?: EmailVerificationService,
   ) {}
 
   /**
@@ -81,7 +85,7 @@ export class AuthService {
       throw new ConflictException('Email is already registered');
     }
 
-    const passwordHash = await bcrypt.hash(registerDto.password, 12);
+    const passwordHash = await bcrypt.hash(registerDto.password, BCRYPT_ROUNDS);
     let issued: IssuedSession;
 
     try {
@@ -109,6 +113,10 @@ export class AuthService {
       throw error;
     }
 
+    // P3-BE02: after the commit, outside the registration transaction; a
+    // verification/e-mail failure never undoes or fails the registration.
+    this.emailVerification?.sendForNewAccount(issued.user.id);
+
     return this.createAuthResponse(issued);
   }
 
@@ -123,7 +131,9 @@ export class AuthService {
       throw new UnauthorizedException('Account is not active');
     }
 
-    return this.createAuthResponse(await this.openSession(user.id, client));
+    return this.createAuthResponse(
+      await this.openSession(user.id, client, user.passwordHash),
+    );
   }
 
   /**
@@ -271,10 +281,14 @@ export class AuthService {
    * Login: creates a session and its first refresh token. The user row is
    * read FOR SHARE, so a concurrent suspension either commits first (and the
    * login is refused) or waits and then revokes this new session.
+   * P3-BE02: the password was verified (bcrypt, before the lock) against
+   * `verifiedPasswordHash`; if a password change/reset committed meanwhile,
+   * the old password must not open a session, so the hash is re-checked.
    */
   private openSession(
     userId: string,
     client: SessionClientInfo,
+    verifiedPasswordHash: string,
   ): Promise<IssuedSession> {
     return this.dataSource.transaction(async (manager) => {
       const user = await manager.getRepository(User).findOne({
@@ -284,6 +298,10 @@ export class AuthService {
 
       if (!user || user.status !== 'ACTIVE') {
         throw new UnauthorizedException('Account is not active');
+      }
+
+      if (user.passwordHash !== verifiedPasswordHash) {
+        throw new UnauthorizedException('Invalid email or password');
       }
 
       return this.insertSession(manager, user, client);
@@ -384,7 +402,11 @@ export class AuthService {
       expiresIn: accessTokenTtlSeconds(this.configService),
       refreshToken,
       refreshTokenExpiresAt: session.expiresAt,
-      user: this.toAuthenticatedUser(user),
+      user: {
+        ...this.toAuthenticatedUser(user),
+        // P3-BE02 (additive): verification status for the client.
+        emailVerified: Boolean(user.emailVerifiedAt),
+      },
     };
   }
 
@@ -396,6 +418,7 @@ export class AuthService {
       phone: user.phone,
       role: user.role,
       status: user.status,
+      emailVerifiedAt: user.emailVerifiedAt ?? null,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };

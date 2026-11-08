@@ -12,6 +12,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import {
+  ApiAcceptedResponse,
   ApiBadRequestResponse,
   ApiBearerAuth,
   ApiConflictResponse,
@@ -21,15 +22,29 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiTags,
+  ApiTooManyRequestsResponse,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import type { Request } from 'express';
 
+import { AccountRecoveryService } from './account-recovery.service';
 import { AuthService, type SessionClientInfo } from './auth.service';
 import { CurrentUser } from './decorators/current-user.decorator';
+import {
+  FORGOT_PASSWORD_MESSAGE,
+  ForgotPasswordResponseDto,
+  VERIFICATION_SENT_MESSAGE,
+  VerificationEmailSentResponseDto,
+  VerifyEmailResponseDto,
+} from './dto/account-recovery-response.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { RegisterDto } from './dto/register.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
+import { VerifyEmailDto } from './dto/verify-email.dto';
+import { EmailVerificationService } from './email-verification.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import type { AuthenticatedUser } from './interfaces/authenticated-user.interface';
 
@@ -50,7 +65,11 @@ function clientInfo(request: Request): SessionClientInfo {
 @ApiTags('Authentication')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly accountRecoveryService: AccountRecoveryService,
+    private readonly emailVerificationService: EmailVerificationService,
+  ) {}
 
   @Post('register')
   @ApiOperation({
@@ -210,8 +229,121 @@ export class AuthController {
       'Bearer token is missing, invalid, expired, revoked, or belongs to an unavailable account.',
   })
   me(@CurrentUser() user: AuthenticatedUser) {
-    const { sessionId: _sessionId, ...profile } = user;
+    const { sessionId: _sessionId, emailVerifiedAt, ...profile } = user;
 
-    return { user: profile };
+    return {
+      user: {
+        ...profile,
+        // P3-BE02 (additive): informational, not enforced anywhere.
+        emailVerified: Boolean(emailVerifiedAt),
+        emailVerifiedAt: emailVerifiedAt ?? null,
+      },
+    };
+  }
+
+  // ------------------------------------------------------------ P3-BE02
+
+  @Post('change-password')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Change my password',
+    description:
+      'Verifies the current password and sets a new one (8-72 characters, must differ from the current password). ' +
+      'On success EVERY session of the user is revoked, including the current one (reason PASSWORD_CHANGED), ' +
+      'and any outstanding password-reset link stops working. The client must log in again with the new password.',
+  })
+  @ApiNoContentResponse({ description: 'Password changed; all sessions revoked.' })
+  @ApiBadRequestResponse({
+    description:
+      'Validation failed, `Current password is incorrect`, or `New password must be different from the current password`. Nothing changed.',
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Access token missing/invalid/revoked, or the account is not active. Nothing changed.',
+  })
+  @ApiConflictResponse({ description: 'The password was changed concurrently by another request. Nothing changed.' })
+  async changePassword(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: ChangePasswordDto,
+  ): Promise<void> {
+    await this.accountRecoveryService.changePassword(user, dto);
+  }
+
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({
+    summary: 'Request a password reset link',
+    description:
+      'Always returns the same 202 body, whether or not an account exists for the address, so it cannot be used to discover accounts. ' +
+      'For an ACTIVE account a single-use reset link is e-mailed (valid 30 minutes by default); it supersedes earlier links. ' +
+      'Repeated requests within the cooldown (60 s by default) do not send another e-mail. Suspended/inactive accounts receive nothing.',
+  })
+  @ApiAcceptedResponse({ type: ForgotPasswordResponseDto, description: 'Request accepted (identical for every address).' })
+  @ApiBadRequestResponse({ description: 'The body is not a valid e-mail address.' })
+  async forgotPassword(@Body() dto: ForgotPasswordDto): Promise<ForgotPasswordResponseDto> {
+    await this.accountRecoveryService.requestPasswordReset(dto.email);
+
+    return { message: FORGOT_PASSWORD_MESSAGE };
+  }
+
+  @Post('reset-password')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: 'Reset the password with an e-mailed token',
+    description:
+      'Consumes the reset token (single use) and sets the new password. In the same transaction every session of the user is revoked ' +
+      '(reason PASSWORD_RESET) and every other outstanding reset/verification link is invalidated; the e-mail address is marked verified. ' +
+      'The user is NOT logged in: the client must call /auth/login with the new password.',
+  })
+  @ApiNoContentResponse({ description: 'Password reset; all sessions revoked.' })
+  @ApiBadRequestResponse({
+    description:
+      'Validation failed (token malformed, password policy), or `Invalid or expired password reset token` ' +
+      '(unknown, expired, already used, superseded, or the account is not active; indistinguishable on purpose).',
+  })
+  async resetPassword(@Body() dto: ResetPasswordDto): Promise<void> {
+    await this.accountRecoveryService.resetPassword(dto);
+  }
+
+  @Post('verify-email')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Verify my e-mail address with an e-mailed token',
+    description:
+      'Consumes the verification token (single use) and marks the address verified. No access token is required. ' +
+      'Verification is informational: no endpoint currently requires a verified address.',
+  })
+  @ApiOkResponse({ type: VerifyEmailResponseDto, description: 'E-mail address verified.' })
+  @ApiBadRequestResponse({
+    description:
+      'Token malformed, or `Invalid or expired verification token` (unknown, expired, already used, superseded, or the account is not active).',
+  })
+  verifyEmail(@Body() dto: VerifyEmailDto): Promise<VerifyEmailResponseDto> {
+    return this.emailVerificationService.verify(dto.token);
+  }
+
+  @Post('verify-email/resend')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Resend the verification e-mail',
+    description:
+      'Issues a new verification link for the authenticated user (valid 24 hours by default) and e-mails it; earlier links stop working. ' +
+      'E-mail delivery happens after the response: a 202 means the e-mail was queued, not delivered.',
+  })
+  @ApiAcceptedResponse({ type: VerificationEmailSentResponseDto, description: 'Verification e-mail queued.' })
+  @ApiUnauthorizedResponse({ description: 'Access token missing/invalid/revoked, or the account is not active.' })
+  @ApiConflictResponse({ description: 'The e-mail address is already verified.' })
+  @ApiTooManyRequestsResponse({
+    description: 'A verification e-mail was sent less than the cooldown ago; body includes `retryAfterSeconds`.',
+  })
+  async resendVerification(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<VerificationEmailSentResponseDto> {
+    const { expiresAt } = await this.emailVerificationService.resend(user);
+
+    return { message: VERIFICATION_SENT_MESSAGE, expiresAt };
   }
 }

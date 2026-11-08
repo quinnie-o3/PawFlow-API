@@ -27,6 +27,9 @@ export const SESSION_REVOKE_REASONS = [
   'REUSE_DETECTED',
   'ACCOUNT_SUSPENDED',
   'ACCOUNT_INACTIVE',
+  // P3-BE02
+  'PASSWORD_CHANGED',
+  'PASSWORD_RESET',
 ] as const;
 
 export type SessionRevokeReason = (typeof SESSION_REVOKE_REASONS)[number];
@@ -34,7 +37,7 @@ export type SessionRevokeReason = (typeof SESSION_REVOKE_REASONS)[number];
 @Entity({ name: 'auth_sessions' })
 @Check(
   'chk_auth_sessions_revoked_reason',
-  `"revoked_reason" IS NULL OR "revoked_reason" IN ('LOGOUT', 'LOGOUT_ALL', 'SESSION_REVOKED', 'REUSE_DETECTED', 'ACCOUNT_SUSPENDED', 'ACCOUNT_INACTIVE')`,
+  `"revoked_reason" IS NULL OR "revoked_reason" IN ('LOGOUT', 'LOGOUT_ALL', 'SESSION_REVOKED', 'REUSE_DETECTED', 'ACCOUNT_SUSPENDED', 'ACCOUNT_INACTIVE', 'PASSWORD_CHANGED', 'PASSWORD_RESET')`,
 )
 @Check(
   'chk_auth_sessions_revocation',

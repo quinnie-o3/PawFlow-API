@@ -6,6 +6,7 @@ import {
 import { DataSource, Repository } from 'typeorm';
 
 import { revokeUserSessions } from '../auth/auth-session.util';
+import { revokeUserTokens } from '../auth/auth-user-token.util';
 import { User } from '../users/entities/user.entity';
 import { type AdminActivityAction } from './admin-activity-log.constants';
 import { AdminActivityLogService } from './admin-activity-log.service';
@@ -139,8 +140,15 @@ export class AdminUsersService {
       // a concurrent login or refresh either commits first and is revoked
       // here, or waits and then sees the SUSPENDED status. Reactivation does
       // not restore sessions; the user logs in again.
+      //
+      // P3-BE02: outstanding password-reset and e-mail-verification links are
+      // revoked in the same transaction (user -> sessions -> tokens), so a
+      // link issued before the suspension cannot become usable again after a
+      // reactivation. Revocation is final; the user requests a new link.
       if (nextStatus === 'SUSPENDED') {
-        await revokeUserSessions(manager, user.id, 'ACCOUNT_SUSPENDED');
+        const now = new Date();
+        await revokeUserSessions(manager, user.id, 'ACCOUNT_SUSPENDED', now);
+        await revokeUserTokens(manager, user.id, undefined, now);
       }
       await this.adminActivityLogService.record(manager, {
         adminUserId,

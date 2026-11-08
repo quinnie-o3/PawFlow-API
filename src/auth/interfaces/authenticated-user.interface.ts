@@ -7,6 +7,11 @@ export interface AuthenticatedUser {
   phone: string | null;
   role: User['role'];
   status: User['status'];
+  /**
+   * When the e-mail address was verified (P3-BE02); null = not verified.
+   * Informational only: no endpoint requires a verified address.
+   */
+  emailVerifiedAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
   /**

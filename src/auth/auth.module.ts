@@ -4,13 +4,17 @@ import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
+import { MailModule } from '../mail/mail.module';
 import { User } from '../users/entities/user.entity';
+import { AccountRecoveryService } from './account-recovery.service';
 import { accessTokenTtlSeconds } from './auth-session.util';
 import { OwnershipService } from './authorization/ownership.service';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { AuthRefreshToken } from './entities/auth-refresh-token.entity';
 import { AuthSession } from './entities/auth-session.entity';
+import { AuthUserToken } from './entities/auth-user-token.entity';
+import { EmailVerificationService } from './email-verification.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
 import { JwtStrategy } from './strategies/jwt.strategy';
@@ -18,7 +22,8 @@ import { JwtStrategy } from './strategies/jwt.strategy';
 @Module({
   imports: [
     ConfigModule,
-    TypeOrmModule.forFeature([User, AuthSession, AuthRefreshToken]),
+    MailModule,
+    TypeOrmModule.forFeature([User, AuthSession, AuthRefreshToken, AuthUserToken]),
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],
@@ -36,6 +41,8 @@ import { JwtStrategy } from './strategies/jwt.strategy';
   controllers: [AuthController],
   providers: [
     AuthService,
+    AccountRecoveryService,
+    EmailVerificationService,
     JwtStrategy,
     JwtAuthGuard,
     RolesGuard,
