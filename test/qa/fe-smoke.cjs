@@ -26,7 +26,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { randomUUID } = require('crypto');
-const { vnDate, prepareDatabase, dropDatabase, createApp, createApi, shape, forbiddenIn, bookingInvariants } = require('./qa-env.cjs');
+const { vnDate, sourceMigrationCount, prepareDatabase, dropDatabase, createApp, createApi, shape, forbiddenIn, bookingInvariants } = require('./qa-env.cjs');
 const { seedDemoData, DEMO_PASSWORD } = require('./demo-seed.cjs');
 
 const NAME = process.env.QA_DB_NAME ?? 'pawflow_qa_fe_smoke';
@@ -67,7 +67,7 @@ const isMoney = (v) => typeof v === 'string' && /^\d+\.\d{2}$/.test(v);
 
 async function main() {
   const { db, migrations, pendingDdl } = await prepareDatabase(NAME);
-  check(`QA database ${NAME} recreated with ${migrations.length} migrations, 0 pending DDL`, migrations.length === 9 && pendingDdl.length === 0, { migrations: migrations.length, pendingDdl });
+  check(`QA database ${NAME} recreated with ${migrations.length} migrations, 0 pending DDL`, migrations.length === sourceMigrationCount() && pendingDdl.length === 0, { migrations: migrations.length, pendingDdl });
   const app = createApp(NAME, PORTS, { logDir: OUT_DIR });
   await app.start();
   const api = createApi(PORTS);

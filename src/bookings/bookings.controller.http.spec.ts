@@ -13,12 +13,16 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import request from 'supertest';
 
 import {
+  activeSessionRepository,
+  sessionIdFor,
+} from '../../test/helpers/auth-session-fixture';
+import {
   bookingEntityFixture,
   CUSTOMER_VIEW_OF_FIXTURE,
 } from '../../test/helpers/booking-fixtures';
+import { AuthSession } from '../auth/entities/auth-session.entity';
 import { JwtStrategy } from '../auth/strategies/jwt.strategy';
 import { GLOBAL_VALIDATION_PIPE_OPTIONS } from '../common/pipes/validation-pipe.options';
-import { User } from '../users/entities/user.entity';
 import { IDEMPOTENCY_KEY_FORMAT_MESSAGE } from './booking-idempotency';
 import { BookingsController } from './bookings.controller';
 import { BookingsService } from './bookings.service';
@@ -58,11 +62,8 @@ describe('POST /bookings Idempotency-Key HTTP contract (P2-07)', () => {
         JwtStrategy,
         { provide: ConfigService, useValue: { getOrThrow: () => SECRET } },
         {
-          provide: getRepositoryToken(User),
-          useValue: {
-            findOne: ({ where }: { where: { id: string } }) =>
-              Promise.resolve(USERS[where.id] ?? null),
-          },
+          provide: getRepositoryToken(AuthSession),
+          useValue: activeSessionRepository(USERS),
         },
         { provide: BookingsService, useValue: service },
       ],
@@ -76,7 +77,7 @@ describe('POST /bookings Idempotency-Key HTTP contract (P2-07)', () => {
     tokens = Object.fromEntries(
       Object.values(USERS).map((user) => [
         user.role,
-        jwt.sign({ sub: user.id, role: user.role }),
+        jwt.sign({ sub: user.id, role: user.role, sid: sessionIdFor(user.id) }),
       ]),
     );
   });

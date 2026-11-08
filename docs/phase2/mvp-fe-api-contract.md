@@ -9,7 +9,7 @@ The live, authoritative schema is Swagger at `GET /api/docs` (JSON: `GET /api/do
 | Topic | Contract |
 |---|---|
 | Base URL | `http://localhost:8000/api` (dev `.env`: `PORT=8000`). Every path below is relative to `/api`. |
-| Auth | `Authorization: Bearer <accessToken>`. Tokens last `JWT_EXPIRES_IN_SECONDS` (default 86 400 s = 1 day). There is no refresh token: on `401` send the user to login. |
+| Auth | `Authorization: Bearer <accessToken>`. Since P3-BE01 access tokens are short-lived (default 15 min) and renewed with a single-use refresh token (`POST /auth/refresh`); see [../phase3/auth-sessions.md](../phase3/auth-sessions.md). On a `401` refresh once, then send the user to login. |
 | Roles | `CUSTOMER`, `PROVIDER_OWNER`, `PROVIDER_STAFF`, `ADMIN` (from `user.role`). Registration always creates a `CUSTOMER`; the role becomes `PROVIDER_OWNER` / `PROVIDER_STAFF` through the provider and staff flows. The role is re-read from the database on every request, so a role change applies to existing tokens. |
 | IDs | Every ID is a **string** (PostgreSQL BIGINT), e.g. `"id": "8"`. Send IDs as strings too; numeric strings are accepted in bodies and paths. Path IDs must be positive integers, otherwise `400`. |
 | Money and decimals | NUMERIC values are **strings with 2 decimals**: `price`, `bookedPrice`, `minPrice`, `maxPrice`, `ratingAvg`, payment `amount`, pet `weight` (`"150000.00"`, `"4.50"`). Parse with `Number()` for display only. Request bodies send numbers (`price: 150000`, `weight: 4.5`). Counts and minutes are numbers (`durationMinutes: 60`, `ratingCount: 1`). |

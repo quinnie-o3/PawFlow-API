@@ -24,7 +24,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { ROOT, vnDate, dayOfWeek, prepareDatabase, createApp, createApi, bookingInvariants } = require('./qa-env.cjs');
+const { ROOT, vnDate, dayOfWeek, sourceMigrationCount, prepareDatabase, createApp, createApi, bookingInvariants } = require('./qa-env.cjs');
 const bcrypt = require(path.join(ROOT, 'node_modules', 'bcrypt'));
 
 const DEMO_PASSWORD = 'PawFlow@2026';
@@ -206,7 +206,7 @@ async function main() {
   const ports = (process.env.QA_PORTS ?? '8100').split(',').map(Number);
   const outDir = process.env.QA_OUT_DIR ?? fs.mkdtempSync(path.join(os.tmpdir(), 'pawflow-demo-'));
   const { db, migrations, pendingDdl } = await prepareDatabase(name);
-  if (migrations.length !== 9 || pendingDdl.length !== 0) throw new Error(`unexpected schema state: ${migrations.length} migrations, ${pendingDdl.length} pending DDL`);
+  if (migrations.length !== sourceMigrationCount() || pendingDdl.length !== 0) throw new Error(`unexpected schema state: ${migrations.length} migrations, ${pendingDdl.length} pending DDL`);
   const app = createApp(name, ports, { logDir: outDir });
   await app.start();
   try {
@@ -214,7 +214,7 @@ async function main() {
     const { tokens: _tokens, ...publicSeed } = seed;
     fs.writeFileSync(path.join(outDir, 'demo-data.json'), JSON.stringify(publicSeed, null, 2));
     fs.writeFileSync(path.join(outDir, 'demo-fingerprint.json'), JSON.stringify(fingerprint(seed), null, 2));
-    console.log(`Demo data ready in ${name} (9 migrations). Password for every account: ${seed.password}`);
+    console.log(`Demo data ready in ${name} (${migrations.length} migrations). Password for every account: ${seed.password}`);
     for (const [key, account] of Object.entries(seed.accounts)) console.log(`  ${key.padEnd(6)} ${account.email.padEnd(26)} ${account.fullName}`);
     console.log(`Bookings: ${JSON.stringify(seed.bookings)}`);
     console.log(`Details: ${path.join(outDir, 'demo-data.json')}`);

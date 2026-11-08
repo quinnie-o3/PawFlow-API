@@ -17,6 +17,9 @@
  *   (CUSTOMER, PROVIDER_OWNER, PROVIDER_STAFF, ADMIN).
  * - `status`: Current account status
  *   (ACTIVE, INACTIVE, SUSPENDED).
+ * - `emailVerifiedAt`: When the e-mail address was verified (P3-BE02);
+ *   NULL = not verified. Accounts created before P3-BE02 stay NULL and are
+ *   NOT restricted: verification is not enforced for login or booking.
  * - `createdAt`: Timestamp when the account was created.
  * - `updatedAt`: Timestamp when the account was last updated.
  *
@@ -107,6 +110,13 @@ export class User {
     default: 'ACTIVE',
   })
   status!: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
+
+  @Column({
+    name: 'email_verified_at',
+    type: 'timestamptz',
+    nullable: true,
+  })
+  emailVerifiedAt!: Date | null;
 
   @CreateDateColumn({
     name: 'created_at',

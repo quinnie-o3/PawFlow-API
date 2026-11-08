@@ -16,7 +16,7 @@ Backend state: Phase 2 complete through P2-11B; verified by `npm run qa:fe-smoke
    | `FRONTEND_URL` | `http://localhost:3000` (Next.js dev server). This single origin is the only one allowed by CORS. |
    | `DB_HOST` / `DB_PORT` / `DB_USERNAME` / `DB_PASSWORD` / `DB_DATABASE` | your PostgreSQL; `pet_care_db` for development |
    | `JWT_SECRET` | any long random string (never commit it) |
-   | `JWT_EXPIRES_IN_SECONDS` | `86400` (token lifetime in seconds). The older `JWT_EXPIRES_IN=1d` key is **not read** by the code. |
+   | `JWT_ACCESS_TOKEN_TTL_SECONDS` / `REFRESH_SESSION_TTL_SECONDS` | `900` / `2592000` (P3-BE01). `JWT_EXPIRES_IN_SECONDS` and `JWT_EXPIRES_IN` are **not read** by the code. |
    | `TZ` | `Asia/Ho_Chi_Minh` (recommended). Slot dates/times and "already started" checks use the server's local time zone; it must be Vietnam time. |
 
 3. Database schema: `npm run typeorm -- migration:show -d database/data-source.ts` must list **9** `[X]` migrations; apply missing ones with `migration:run` (never `synchronize`).
@@ -52,7 +52,7 @@ All names, addresses and phone numbers are fictional.
 ## 2. Integration order
 
 1. API client: base URL from `NEXT_PUBLIC_API_URL`, JSON, bearer header, error normalization (§4), `AbortController` support.
-2. Auth: register, login, `GET /auth/me` on app start, logout = drop the token. Route by `user.role`.
+2. Auth: register, login, `GET /auth/me` on app start, single-flight `POST /auth/refresh` on `401`, `POST /auth/logout` (see [../phase3/auth-sessions.md](../phase3/auth-sessions.md)). Route by `user.role`.
 3. Public discovery: provider search → provider detail (+ public reviews) → service search/detail → availability search/detail.
 4. Customer: pets CRUD → booking creation with Idempotency-Key → my bookings list/detail → cancel.
 5. Provider owner/staff: booking list/detail → confirm/reject/complete/no-show.
@@ -141,7 +141,7 @@ export interface Payment { id: Id; bookingId: Id; amount: Money; method: 'CASH' 
 ## 4. Authentication and errors
 
 - Send `Authorization: Bearer ${accessToken}` on every protected call. The existing FE login uses `credentials: "include"`; that is allowed by CORS but not needed — auth is header-based only.
-- `401` anywhere → clear the token, redirect to login (tokens expire after 1 day; there is no refresh endpoint).
+- `401` anywhere → refresh once with the stored refresh token and retry; if that fails, clear both tokens and redirect to login (access tokens last 15 minutes).
 - `403` → "Bạn không có quyền thực hiện thao tác này" (or a lifecycle message, e.g. provider suspended).
 - `404` on a detail page → "Không tìm thấy" (also used for resources that are not yours).
 - `409` → show as a business conflict and refresh the affected data (slot full, status already changed…).

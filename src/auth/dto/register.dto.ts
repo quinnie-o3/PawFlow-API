@@ -11,6 +11,8 @@ import {
   ApiPropertyOptional,
 } from '@nestjs/swagger';
 
+import { TurnstileTokenField } from './turnstile-token.field';
+
 export class RegisterDto {
   @ApiProperty({
     example: 'Nguyen Van A',
@@ -70,4 +72,7 @@ export class RegisterDto {
   @MinLength(8)
   @MaxLength(72)
   password!: string;
+
+  @TurnstileTokenField('register')
+  turnstileToken?: string;
 }
