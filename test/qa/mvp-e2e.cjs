@@ -155,11 +155,14 @@ const procs = {};
 
 function startInstance(port) {
   const env = { ...process.env };
-  for (const key of Object.keys(env)) if (/^(DB_|JWT_|PORT$|QA_)/.test(key)) delete env[key];
+  for (const key of Object.keys(env)) if (/^(DB_|JWT_|PORT$|QA_|TURNSTILE_|AUTH_RATE_LIMIT|RATE_LIMIT_|TRUST_PROXY$)/.test(key)) delete env[key];
   Object.assign(env, {
     TZ, PORT: String(port), NODE_ENV: 'test',
     DB_HOST: DB.host, DB_PORT: String(DB.port), DB_USERNAME: DB.user, DB_PASSWORD: DB.password, DB_DATABASE: QA_DB,
     JWT_SECRET, JWT_EXPIRES_IN_SECONDS: '3600', FRONTEND_URL: 'http://localhost:3001',
+    // P3-BE03: functional E2E, not abuse QA -> explicit, test-only configuration
+    // (both refused when NODE_ENV=production). Same as test/qa/qa-env.cjs.
+    TURNSTILE_MODE: 'disabled', AUTH_RATE_LIMIT: 'disabled',
   });
   const log = fs.openSync(path.join(OUT_DIR, `app-${port}.log`), 'a');
   procs[port] = spawn(process.execPath, [MAIN], { cwd: RUN_DIR, env, stdio: ['ignore', log, log] });
@@ -172,7 +175,8 @@ function startInstance(port) {
 }
 const stopAll = () => Promise.all(PORTS.map((port) => new Promise((resolve) => {
   const child = procs[port];
-  if (!child || child.exitCode !== null) return resolve();
+  // Already exited (normally or by signal): do not wait for an 'exit' that already fired.
+  if (!child || child.exitCode !== null || child.signalCode !== null) return resolve();
   child.once('exit', resolve);
   child.kill();
 })));
