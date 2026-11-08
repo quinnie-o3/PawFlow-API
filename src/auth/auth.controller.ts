@@ -9,6 +9,7 @@ import {
   ParseUUIDPipe,
   Post,
   Req,
+  UseFilters,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -17,16 +18,19 @@ import {
   ApiBearerAuth,
   ApiConflictResponse,
   ApiCreatedResponse,
+  ApiForbiddenResponse,
   ApiNoContentResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiServiceUnavailableResponse,
   ApiTags,
   ApiTooManyRequestsResponse,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import type { Request } from 'express';
 
+import { RetryAfterFilter } from '../common/filters/retry-after.filter';
 import { AccountRecoveryService } from './account-recovery.service';
 import { AuthService, type SessionClientInfo } from './auth.service';
 import { CurrentUser } from './decorators/current-user.decorator';
@@ -45,7 +49,10 @@ import { RegisterDto } from './dto/register.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
 import { EmailVerificationService } from './email-verification.service';
+import { TURNSTILE_ACTIONS } from './bot-protection/turnstile.config';
+import { TurnstileService } from './bot-protection/turnstile.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { AuthRateLimitGuard, RateLimit } from './rate-limit/auth-rate-limit.guard';
 import type { AuthenticatedUser } from './interfaces/authenticated-user.interface';
 
 const AUTH_RESPONSE_DESCRIPTION =
@@ -62,16 +69,31 @@ function clientInfo(request: Request): SessionClientInfo {
   };
 }
 
+// P3-BE03 shared error documentation for the bot-protected endpoints.
+const BOT_FORBIDDEN =
+  'Bot verification failed (only when TURNSTILE_MODE=enforce). `code`: `TURNSTILE_REQUIRED` (no token), ' +
+  '`TURNSTILE_INVALID` (rejected, wrong hostname or action), `TURNSTILE_EXPIRED` (older than 300 s or already used). ' +
+  'Reset the widget and retry with a fresh token. Nothing was changed.';
+const RATE_LIMITED =
+  'Too many requests (`code: RATE_LIMITED`). The `Retry-After` header and `retryAfterSeconds` give the wait in seconds. Nothing was changed.';
+const BOT_UNAVAILABLE =
+  'Verification temporarily unavailable (`code: TURNSTILE_UNAVAILABLE` or `RATE_LIMIT_UNAVAILABLE`); fails closed. ' +
+  'Retry after `Retry-After` seconds with a fresh Turnstile token. Nothing was changed.';
+
 @ApiTags('Authentication')
 @Controller('auth')
+@UseFilters(RetryAfterFilter)
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly accountRecoveryService: AccountRecoveryService,
     private readonly emailVerificationService: EmailVerificationService,
+    private readonly turnstile: TurnstileService,
   ) {}
 
   @Post('register')
+  @UseGuards(AuthRateLimitGuard)
+  @RateLimit('register')
   @ApiOperation({
     summary: 'Register a customer account',
     description:
@@ -87,12 +109,20 @@ export class AuthController {
   @ApiConflictResponse({
     description: 'An account with the same email already exists.',
   })
-  register(@Body() registerDto: RegisterDto, @Req() request: Request) {
+  @ApiForbiddenResponse({ description: BOT_FORBIDDEN })
+  @ApiTooManyRequestsResponse({ description: RATE_LIMITED })
+  @ApiServiceUnavailableResponse({ description: BOT_UNAVAILABLE })
+  async register(@Body() registerDto: RegisterDto, @Req() request: Request) {
+    // P3-BE03: verified after validation, before any user/session is created.
+    await this.turnstile.verify(registerDto.turnstileToken, TURNSTILE_ACTIONS.register, request.ip);
+
     return this.authService.register(registerDto, clientInfo(request));
   }
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
+  @UseGuards(AuthRateLimitGuard)
+  @RateLimit('login')
   @ApiOperation({
     summary: 'Log in',
     description:
@@ -108,7 +138,13 @@ export class AuthController {
     description:
       'Invalid credentials or the account is not active (suspended accounts cannot log in).',
   })
-  login(@Body() loginDto: LoginDto, @Req() request: Request) {
+  @ApiForbiddenResponse({ description: BOT_FORBIDDEN })
+  @ApiTooManyRequestsResponse({ description: RATE_LIMITED })
+  @ApiServiceUnavailableResponse({ description: BOT_UNAVAILABLE })
+  async login(@Body() loginDto: LoginDto, @Req() request: Request) {
+    // P3-BE03: verified before the password is checked or a session opened.
+    await this.turnstile.verify(loginDto.turnstileToken, TURNSTILE_ACTIONS.login, request.ip);
+
     return this.authService.login(loginDto, clientInfo(request));
   }
 
@@ -272,6 +308,8 @@ export class AuthController {
 
   @Post('forgot-password')
   @HttpCode(HttpStatus.ACCEPTED)
+  @UseGuards(AuthRateLimitGuard)
+  @RateLimit('forgot-password')
   @ApiOperation({
     summary: 'Request a password reset link',
     description:
@@ -281,7 +319,13 @@ export class AuthController {
   })
   @ApiAcceptedResponse({ type: ForgotPasswordResponseDto, description: 'Request accepted (identical for every address).' })
   @ApiBadRequestResponse({ description: 'The body is not a valid e-mail address.' })
-  async forgotPassword(@Body() dto: ForgotPasswordDto): Promise<ForgotPasswordResponseDto> {
+  @ApiForbiddenResponse({ description: BOT_FORBIDDEN })
+  @ApiTooManyRequestsResponse({ description: `${RATE_LIMITED} Limits are counted per client IP and per e-mail string, whether or not an account exists.` })
+  @ApiServiceUnavailableResponse({ description: BOT_UNAVAILABLE })
+  async forgotPassword(@Body() dto: ForgotPasswordDto, @Req() request: Request): Promise<ForgotPasswordResponseDto> {
+    // P3-BE03: verified before the account lookup, so the outcome never
+    // depends on whether the address belongs to an account.
+    await this.turnstile.verify(dto.turnstileToken, TURNSTILE_ACTIONS.forgotPassword, request.ip);
     await this.accountRecoveryService.requestPasswordReset(dto.email);
 
     return { message: FORGOT_PASSWORD_MESSAGE };
@@ -289,6 +333,8 @@ export class AuthController {
 
   @Post('reset-password')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(AuthRateLimitGuard)
+  @RateLimit('reset-password')
   @ApiOperation({
     summary: 'Reset the password with an e-mailed token',
     description:
@@ -302,7 +348,12 @@ export class AuthController {
       'Validation failed (token malformed, password policy), or `Invalid or expired password reset token` ' +
       '(unknown, expired, already used, superseded, or the account is not active; indistinguishable on purpose).',
   })
-  async resetPassword(@Body() dto: ResetPasswordDto): Promise<void> {
+  @ApiForbiddenResponse({ description: BOT_FORBIDDEN })
+  @ApiTooManyRequestsResponse({ description: RATE_LIMITED })
+  @ApiServiceUnavailableResponse({ description: BOT_UNAVAILABLE })
+  async resetPassword(@Body() dto: ResetPasswordDto, @Req() request: Request): Promise<void> {
+    // P3-BE03: verified before the reset token is looked up or consumed.
+    await this.turnstile.verify(dto.turnstileToken, TURNSTILE_ACTIONS.resetPassword, request.ip);
     await this.accountRecoveryService.resetPassword(dto);
   }
 

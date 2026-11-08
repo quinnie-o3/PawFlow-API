@@ -4,6 +4,8 @@ import { IsString, Matches, MaxLength, MinLength } from 'class-validator';
 import { USER_TOKEN_PATTERN } from '../auth-user-token.util';
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from '../password-policy';
 
+import { TurnstileTokenField } from './turnstile-token.field';
+
 export class ResetPasswordDto {
   @ApiProperty({
     description: 'Password-reset token from the e-mailed link (`/reset-password#token=…`). Single use.',
@@ -24,4 +26,7 @@ export class ResetPasswordDto {
   @MinLength(PASSWORD_MIN_LENGTH)
   @MaxLength(PASSWORD_MAX_LENGTH)
   newPassword!: string;
+
+  @TurnstileTokenField('reset_password')
+  turnstileToken?: string;
 }

@@ -23,7 +23,7 @@ const os = require('os');
 const path = require('path');
 const net = require('net');
 const { createHash } = require('crypto');
-const { ROOT, DB, Client, sleep, prepareDatabase, dropDatabase, createApp, createApi, assertQaDatabaseName } = require('./qa-env.cjs');
+const { ROOT, DB, Client, sleep, prepareDatabase, dropDatabase, createApp, createApi, assertQaDatabaseName, sourceMigrationCount } = require('./qa-env.cjs');
 const bcrypt = require(path.join(ROOT, 'node_modules', 'bcrypt'));
 const { DataSource } = require(path.join(ROOT, 'node_modules', 'typeorm'));
 
@@ -134,7 +134,7 @@ async function migrationRehearsal() {
   await db.connect();
   try {
     check('rehearsal connects to the disposable database only', (await db.query('select current_database() d')).rows[0].d === MIG_NAME);
-    const before = dataSource(all.filter((f) => !f.startsWith('1794690000000')));
+    const before = dataSource(all.filter((f) => Number(f.split('-')[0]) < 1794690000000));
     await before.initialize();
     const p1 = await before.runMigrations({ transaction: 'each' });
     await before.destroy();
@@ -154,7 +154,7 @@ async function migrationRehearsal() {
     await full.initialize();
     const up = await full.runMigrations({ transaction: 'each' });
     const pending = (await full.driver.createSchemaBuilder().log()).upQueries.map((q) => q.query);
-    check('up: only AddAccountRecovery runs; entities match the schema (0 pending DDL)', up.length === 1 && up[0].name === NEW_MIGRATION && pending.length === 0, { up: up.map((m) => m.name), pending });
+    check('up: AddAccountRecovery (then any later migration) runs; entities match the schema (0 pending DDL)', up.length === all.length - 10 && up[0].name === NEW_MIGRATION && pending.length === 0, { up: up.map((m) => m.name), pending });
     check('up: existing users, passwords, statuses and sessions are unchanged', JSON.stringify(await snapshot()) === JSON.stringify(beforeData));
     const legacyState = (await db.query('select count(*)::int c, count(email_verified_at)::int verified from users')).rows[0];
     check('up: existing users are NOT backfilled (email_verified_at NULL) and no session was revoked', legacyState.c === 2 && legacyState.verified === 0 && (await db.query(`select count(*)::int c from auth_sessions where revoked_at is null`)).rows[0].c === 1, legacyState);
@@ -165,7 +165,8 @@ async function migrationRehearsal() {
     await db.query(`update auth_sessions set revoked_at = now(), revoked_reason = 'PASSWORD_RESET' where id = '11111111-1111-4111-8111-111111111111'`);
     await db.query(`update users set email_verified_at = now() where id = $1`, [legacy[0]]);
     await db.query(`insert into auth_user_tokens(user_id, purpose, token_hash, expires_at) values ($1, 'PASSWORD_RESET', $2, now() + interval '30 minutes')`, [legacy[0], sha256('x')]);
-    await full.undoLastMigration({ transaction: 'each' });
+    // Undo newest first, down to and including AddAccountRecovery.
+    for (let i = 0; i < up.length; i++) await full.undoLastMigration({ transaction: 'each' });
     const afterDown = (await db.query(`select
       (select count(*)::int from information_schema.tables where table_name = 'auth_user_tokens') token_table,
       (select count(*)::int from information_schema.columns where table_name = 'users' and column_name = 'email_verified_at') verified_column,
@@ -177,7 +178,7 @@ async function migrationRehearsal() {
     const again = await full.runMigrations({ transaction: 'each' });
     const pendingAgain = (await full.driver.createSchemaBuilder().log()).upQueries.length;
     await full.destroy();
-    check('up again after down: succeeds with 0 pending DDL', again.length === 1 && pendingAgain === 0, { again: again.map((m) => m.name), pendingAgain });
+    check('up again after down: succeeds with 0 pending DDL', again.length === up.length && pendingAgain === 0, { again: again.map((m) => m.name), pendingAgain });
   } finally {
     await db.end();
     if (process.env.QA_KEEP_DB !== '1') await dropDatabase(MIG_NAME);
@@ -224,7 +225,7 @@ async function main() {
   try {
     // ------------------------------------------------------------ schema
     section('1. Schema on a fresh QA database');
-    check('all 11 source migrations applied, last = AddAccountRecovery, 0 pending DDL', migrations.length === 11 && migrations.at(-1) === NEW_MIGRATION && pendingDdl.length === 0, { migrations, pendingDdl });
+    check(`all ${migrations.length} source migrations applied (incl. AddAccountRecovery), 0 pending DDL`, migrations.length === sourceMigrationCount() && migrations.includes(NEW_MIGRATION) && pendingDdl.length === 0, { migrations, pendingDdl });
     const cons = (await db.query(`select conname from pg_constraint where conrelid = 'auth_user_tokens'::regclass order by 1`)).rows.map((r) => r.conname);
     check('auth_user_tokens constraints: PK, FK -> users CASCADE, unique hash, purpose/hash/expiry/final-state CHECKs', ['chk_auth_user_tokens_expiry', 'chk_auth_user_tokens_final_state', 'chk_auth_user_tokens_hash', 'chk_auth_user_tokens_purpose', 'fk_auth_user_tokens_user', 'uq_auth_user_tokens_hash'].every((c) => cons.includes(c)), cons);
     await db.query(`insert into users(full_name, email, password_hash, role, status) values ('QA Admin', $1, $2, 'ADMIN', 'ACTIVE')`, [mail('admin'), await bcrypt.hash(PASSWORD, 10)]);

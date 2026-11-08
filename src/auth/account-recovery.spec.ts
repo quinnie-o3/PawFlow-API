@@ -9,6 +9,7 @@ import {
 import type { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
+import type { Request } from 'express';
 import { type DataSource, FindOperator, type Repository } from 'typeorm';
 
 import { GLOBAL_VALIDATION_PIPE_OPTIONS } from '../common/pipes/validation-pipe.options';
@@ -17,6 +18,7 @@ import { MailService } from '../mail/mail.service';
 import { User } from '../users/entities/user.entity';
 import { AccountRecoveryService, INVALID_RESET_TOKEN } from './account-recovery.service';
 import { AuthController } from './auth.controller';
+import { TurnstileService } from './bot-protection/turnstile.service';
 import { AuthService } from './auth.service';
 import { hashUserToken, USER_TOKEN_PATTERN } from './auth-user-token.util';
 import { FORGOT_PASSWORD_MESSAGE } from './dto/account-recovery-response.dto';
@@ -33,6 +35,8 @@ import type { AuthenticatedUser } from './interfaces/authenticated-user.interfac
 type Row = Record<string, any>;
 
 const PASSWORD = 'Password123!';
+// Turnstile is disabled in this harness (TURNSTILE_MODE unset, NODE_ENV not production).
+const REQUEST = { ip: '127.0.0.1' } as Request;
 const NEW_PASSWORD = 'NewPassword456!';
 const MINUTE = 60_000;
 
@@ -229,7 +233,7 @@ async function createHarness(config: Record<string, string> = {}) {
     await mail.idle();
   };
 
-  return { state, locks, failures, hooks, transport, mail, recovery, verification, auth, settle, controller: new AuthController(auth, recovery, verification) };
+  return { state, locks, failures, hooks, transport, mail, recovery, verification, auth, settle, controller: new AuthController(auth, recovery, verification, new TurnstileService(configService)) };
 }
 
 type Harness = Awaited<ReturnType<typeof createHarness>>;
@@ -420,7 +424,7 @@ describe('Account recovery (P3-BE02)', () => {
     it('returns the same body for eligible, unknown and suspended addresses', async () => {
       const bodies = [];
       for (const email of ['an@pawflow.test', 'nobody@pawflow.test', 'cuong@pawflow.test']) {
-        bodies.push(await h.controller.forgotPassword({ email }));
+        bodies.push(await h.controller.forgotPassword({ email }, REQUEST));
       }
       await h.settle();
 
@@ -481,7 +485,7 @@ describe('Account recovery (P3-BE02)', () => {
 
     it('commits the token before the response resolves (an accepted request survives a crash)', async () => {
       // No settle(): only the e-mail may still be pending.
-      await h.controller.forgotPassword({ email: 'an@pawflow.test' });
+      await h.controller.forgotPassword({ email: 'an@pawflow.test' }, REQUEST);
 
       expect(h.state.userTokens).toEqual([expect.objectContaining({ userId: '1', purpose: 'PASSWORD_RESET', consumedAt: null, revokedAt: null })]);
     });
@@ -490,7 +494,7 @@ describe('Account recovery (P3-BE02)', () => {
       h = await createHarness({ AUTH_RECOVERY_MIN_RESPONSE_MS: '120' });
       for (const email of ['an@pawflow.test', 'nobody@pawflow.test', 'cuong@pawflow.test']) {
         const t = performance.now();
-        await h.controller.forgotPassword({ email });
+        await h.controller.forgotPassword({ email }, REQUEST);
         expect(performance.now() - t).toBeGreaterThanOrEqual(115);
       }
     });
@@ -499,7 +503,7 @@ describe('Account recovery (P3-BE02)', () => {
       const errors = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
       h.transport.failWith = new Error('SMTP 421 try later');
 
-      await h.controller.forgotPassword({ email: 'an@pawflow.test' });
+      await h.controller.forgotPassword({ email: 'an@pawflow.test' }, REQUEST);
       await h.settle();
 
       expect(h.state.userTokens).toHaveLength(1);
@@ -508,7 +512,7 @@ describe('Account recovery (P3-BE02)', () => {
       expect(JSON.stringify(errors.mock.calls)).not.toMatch(/token=|#|an@pawflow/);
 
       h.transport.failWith = null;
-      await h.controller.forgotPassword({ email: 'an@pawflow.test' });
+      await h.controller.forgotPassword({ email: 'an@pawflow.test' }, REQUEST);
       await h.settle();
       expect(h.state.userTokens).toHaveLength(2);
       const token = tokenFrom(h.transport.sent[0]);
@@ -520,7 +524,7 @@ describe('Account recovery (P3-BE02)', () => {
       const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
       h.transport.name = 'disabled';
 
-      await h.controller.forgotPassword({ email: 'an@pawflow.test' });
+      await h.controller.forgotPassword({ email: 'an@pawflow.test' }, REQUEST);
       await h.settle();
 
       expect(h.state.userTokens[0].revokedAt).toBeInstanceOf(Date);
@@ -547,7 +551,7 @@ describe('Account recovery (P3-BE02)', () => {
     it('propagates a database failure as an error (no false acceptance) and leaves nothing behind', async () => {
       h.failures.userTokenInsert = new Error('db down');
 
-      await expect(h.controller.forgotPassword({ email: 'an@pawflow.test' })).rejects.toThrow('db down');
+      await expect(h.controller.forgotPassword({ email: 'an@pawflow.test' }, REQUEST)).rejects.toThrow('db down');
       await h.settle();
 
       expect(h.state.userTokens).toHaveLength(0);

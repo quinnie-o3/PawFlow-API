@@ -102,7 +102,7 @@ The new build selects `users.email_verified_at`: **run the migration before star
 
 - **No live e-mail delivery has been verified.** The SMTP transport was exercised end to end only against a local SMTP protocol stub in QA (accept / reject / hang). No message has been sent to a real mail server or inbox.
 - No persistent outbox/retry (see the crash window above).
-- Anti-abuse is per account (cooldown + one usable link). There is no per-IP rate limiting or CAPTCHA on `/auth/forgot-password`, `/auth/reset-password`, `/auth/verify-email` or `/auth/login`; this is deferred to P3-BE03 / security hardening. Unknown addresses cost one indexed query.
+- P3-BE03 adds Turnstile and per-IP / per-e-mail rate limits to `/auth/login`, `/auth/register`, `/auth/forgot-password` and `/auth/reset-password` (see `bot-protection.md`). `/auth/verify-email` is not challenge-protected: it requires an unguessable single-use token.
 - Wrong current passwords on `/auth/change-password` are not rate-limited (bcrypt slows guessing; an access token is required).
 - **Policy decision pending:** whether verification becomes mandatory (before login, booking, or provider onboarding), and how to handle the existing unverified accounts if so. Until decided, nothing is enforced.
 - No "your password was changed" notification e-mail.

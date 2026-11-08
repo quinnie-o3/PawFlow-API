@@ -2,6 +2,8 @@ import { ApiProperty } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { IsEmail, MaxLength } from 'class-validator';
 
+import { TurnstileTokenField } from './turnstile-token.field';
+
 export class ForgotPasswordDto {
   @ApiProperty({
     example: 'customer@example.com',
@@ -12,4 +14,7 @@ export class ForgotPasswordDto {
   @IsEmail()
   @MaxLength(255)
   email!: string;
+
+  @TurnstileTokenField('forgot_password')
+  turnstileToken?: string;
 }

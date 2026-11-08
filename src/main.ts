@@ -1,11 +1,13 @@
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 import { AppModule } from './app.module';
 import { IDEMPOTENT_REPLAYED_HEADER } from './bookings/booking-idempotency';
 import { GLOBAL_VALIDATION_PIPE_OPTIONS } from './common/pipes/validation-pipe.options';
+import { parseTrustProxy } from './common/utils/trust-proxy';
 
 /**
  * Application bootstrap
@@ -20,9 +22,16 @@ import { GLOBAL_VALIDATION_PIPE_OPTIONS } from './common/pipes/validation-pipe.o
  * - Enables graceful shutdown hooks.
  */
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   const configService = app.get(ConfigService);
+
+  // P3-BE03: which reverse proxies may set X-Forwarded-For. Default: none,
+  // so request.ip (sessions, rate limiting, Turnstile remoteip) is the TCP
+  // peer and cannot be spoofed by clients. Invalid values stop the startup.
+  const trustProxy = parseTrustProxy(configService.get<string>('TRUST_PROXY'));
+  app.set('trust proxy', trustProxy);
+  console.log(`Trust proxy: ${trustProxy === false ? 'off (X-Forwarded-For ignored)' : JSON.stringify(trustProxy)}`);
 
   // All application endpoints will start with /api.
   // Example:

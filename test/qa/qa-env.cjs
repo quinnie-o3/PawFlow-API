@@ -103,7 +103,16 @@ async function dropDatabase(name) {
 }
 
 /** Starts dist/main.js on each port against the QA database. */
-function createApp(name, ports, { logDir = os.tmpdir(), jwtSecret = randomUUID() + randomUUID() } = {}) {
+/**
+ * P3-BE03: QA apps get an explicit bot-protection / rate-limit configuration
+ * instead of inheriting the caller's environment. Legacy suites (functional
+ * QA, not abuse QA) run with both explicitly disabled, which the application
+ * allows only when NODE_ENV is not production. Suites that test protection
+ * pass `env` overrides, e.g. { TURNSTILE_MODE: 'enforce', ... }.
+ */
+const QA_SECURITY_DEFAULTS = { TURNSTILE_MODE: 'disabled', AUTH_RATE_LIMIT: 'disabled' };
+
+function createApp(name, ports, { logDir = os.tmpdir(), jwtSecret = randomUUID() + randomUUID(), env: extraEnv = {} } = {}) {
   assertQaDatabaseName(name);
   assertBuilt();
   const runDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pawflow-qa-run-'));
@@ -111,12 +120,14 @@ function createApp(name, ports, { logDir = os.tmpdir(), jwtSecret = randomUUID()
 
   const start = (port) => {
     const env = { ...process.env };
-    for (const key of Object.keys(env)) if (/^(DB_|JWT_|PORT$|QA_)/.test(key)) delete env[key];
+    for (const key of Object.keys(env)) if (/^(DB_|JWT_|PORT$|QA_|TURNSTILE_|AUTH_RATE_LIMIT|RATE_LIMIT_|TRUST_PROXY$)/.test(key)) delete env[key];
     Object.assign(env, {
       TZ, PORT: String(port), NODE_ENV: 'test',
       DB_HOST: DB.host, DB_PORT: String(DB.port), DB_USERNAME: DB.user, DB_PASSWORD: DB.password, DB_DATABASE: name,
       JWT_SECRET: jwtSecret, JWT_EXPIRES_IN_SECONDS: '86400',
       FRONTEND_URL: process.env.QA_FRONTEND_URL ?? 'http://localhost:3000',
+      ...QA_SECURITY_DEFAULTS,
+      ...extraEnv,
     });
     const log = fs.openSync(path.join(logDir, `app-${name}-${port}.log`), 'a');
     procs[port] = spawn(process.execPath, [MAIN], { cwd: runDir, env, stdio: ['ignore', log, log] });
@@ -133,7 +144,8 @@ function createApp(name, ports, { logDir = os.tmpdir(), jwtSecret = randomUUID()
     start: () => Promise.all(ports.map(start)),
     stop: () => Promise.all(ports.map((port) => new Promise((resolve) => {
       const child = procs[port];
-      if (!child || child.exitCode !== null) return resolve();
+      // Already exited (normally or by signal): stopping twice must not wait for an 'exit' that already fired.
+      if (!child || child.exitCode !== null || child.signalCode !== null) return resolve();
       child.once('exit', resolve);
       child.kill();
     }))),

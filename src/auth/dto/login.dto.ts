@@ -7,6 +7,8 @@ import {
 } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
+import { TurnstileTokenField } from './turnstile-token.field';
+
 export class LoginDto {
   @ApiProperty({
     example: 'customer@example.com',
@@ -32,4 +34,7 @@ export class LoginDto {
   @MinLength(8)
   @MaxLength(72)
   password!: string;
+
+  @TurnstileTokenField('login')
+  turnstileToken?: string;
 }
