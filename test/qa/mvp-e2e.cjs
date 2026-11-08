@@ -343,7 +343,8 @@ async function main() {
   if (identity !== QA_DB) throw new Error('ISOLATION FAILURE');
   const migration = await migrate();
   evidence.migrations = migration.executed;
-  check('all 9 source migrations executed on QA', migration.executed.length === 9, migration.executed);
+  const sourceMigrations = fs.readdirSync(path.join(ROOT, 'dist', 'database', 'migrations')).filter((file) => file.endsWith('.js')).length;
+  check(`all ${sourceMigrations} source migrations executed on QA`, migration.executed.length === sourceMigrations, migration.executed);
   check('entity metadata matches the migrated schema (no pending DDL)', migration.pendingSchemaChanges.length === 0, migration.pendingSchemaChanges);
   await startAll();
   check('two app instances started against the QA database', true);

@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { DataSource, Repository } from 'typeorm';
 
+import { revokeUserSessions } from '../auth/auth-session.util';
 import { User } from '../users/entities/user.entity';
 import { type AdminActivityAction } from './admin-activity-log.constants';
 import { AdminActivityLogService } from './admin-activity-log.service';
@@ -132,6 +133,15 @@ export class AdminUsersService {
       const fromStatus = user.status;
       user.status = nextStatus;
       await usersRepository.save(user);
+
+      // P3-BE01: a suspended account keeps no usable session. The user row is
+      // already locked FOR UPDATE (user -> sessions, as in token refresh), so
+      // a concurrent login or refresh either commits first and is revoked
+      // here, or waits and then sees the SUSPENDED status. Reactivation does
+      // not restore sessions; the user logs in again.
+      if (nextStatus === 'SUSPENDED') {
+        await revokeUserSessions(manager, user.id, 'ACCOUNT_SUSPENDED');
+      }
       await this.adminActivityLogService.record(manager, {
         adminUserId,
         action: activityAction,

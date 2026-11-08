@@ -54,6 +54,11 @@ function assertBuilt() {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/** Number of compiled source migrations (dist/database/migrations/*.js). */
+function sourceMigrationCount() {
+  return fs.readdirSync(path.join(ROOT, 'dist', 'database', 'migrations')).filter((file) => file.endsWith('.js')).length;
+}
+
 /** Business-time-zone calendar date, `offsetDays` from today (YYYY-MM-DD). */
 function vnDate(offsetDays) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' })
@@ -193,7 +198,7 @@ async function bookingInvariants(db, providerIds) {
 }
 
 module.exports = {
-  ROOT, TZ, DB, Client, sleep, vnDate, dayOfWeek,
+  ROOT, TZ, DB, Client, sleep, vnDate, dayOfWeek, sourceMigrationCount,
   assertQaDatabaseName, prepareDatabase, dropDatabase, createApp, createApi,
   keyPaths, shape, forbiddenIn, bookingInvariants,
 };

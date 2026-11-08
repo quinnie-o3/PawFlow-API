@@ -19,6 +19,10 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import request from 'supertest';
 
 import {
+  activeSessionRepository,
+  sessionIdFor,
+} from '../../test/helpers/auth-session-fixture';
+import {
   bookingEntityFixture,
   CUSTOMER_VIEW_OF_FIXTURE,
   forbiddenKeysIn,
@@ -26,9 +30,9 @@ import {
   PROVIDER_VIEW_OF_FIXTURE,
   STATUS_LOGS_OF_FIXTURE,
 } from '../../test/helpers/booking-fixtures';
+import { AuthSession } from '../auth/entities/auth-session.entity';
 import { JwtStrategy } from '../auth/strategies/jwt.strategy';
 import { GLOBAL_VALIDATION_PIPE_OPTIONS } from '../common/pipes/validation-pipe.options';
-import { User } from '../users/entities/user.entity';
 import { BookingsController } from './bookings.controller';
 import { BookingsService } from './bookings.service';
 
@@ -132,11 +136,8 @@ describe('Booking API response contracts (P2-08B)', () => {
         JwtStrategy,
         { provide: ConfigService, useValue: { getOrThrow: () => SECRET } },
         {
-          provide: getRepositoryToken(User),
-          useValue: {
-            findOne: ({ where }: { where: { id: string } }) =>
-              Promise.resolve(USERS[where.id] ?? null),
-          },
+          provide: getRepositoryToken(AuthSession),
+          useValue: activeSessionRepository(USERS),
         },
         { provide: BookingsService, useValue: service },
       ],
@@ -151,7 +152,7 @@ describe('Booking API response contracts (P2-08B)', () => {
     tokens = Object.fromEntries(
       Object.values(USERS).map((user) => [
         user.role,
-        jwt.sign({ sub: user.id, role: user.role }),
+        jwt.sign({ sub: user.id, role: user.role, sid: sessionIdFor(user.id) }),
       ]),
     );
   });

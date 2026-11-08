@@ -1,6 +1,7 @@
 import { ConflictException } from '@nestjs/common';
 import type { DataSource } from 'typeorm';
 
+import { AuthSession } from '../auth/entities/auth-session.entity';
 import { User } from '../users/entities/user.entity';
 import { AdminActivityLogService } from './admin-activity-log.service';
 import { AdminUsersService } from './admin-users.service';
@@ -11,6 +12,8 @@ describe('AdminUsersService suspension (C-07)', () => {
   let users: Map<string, Partial<User>>;
   let save: jest.Mock;
   let record: jest.Mock;
+  // Session revocations issued inside the transaction (P3-BE01).
+  let revokeSessions: jest.Mock;
   let service: AdminUsersService;
 
   beforeEach(() => {
@@ -51,7 +54,13 @@ describe('AdminUsersService suspension (C-07)', () => {
       save,
     };
 
-    const manager = { getRepository: jest.fn(() => usersRepository) };
+    revokeSessions = jest.fn().mockResolvedValue({ affected: 2 });
+    const sessionsRepository = { update: revokeSessions };
+    const manager = {
+      getRepository: jest.fn((entity: unknown) =>
+        entity === AuthSession ? sessionsRepository : usersRepository,
+      ),
+    };
     const dataSource = {
       transaction: jest.fn((work: (m: typeof manager) => unknown) => work(manager)),
     };
@@ -101,6 +110,32 @@ describe('AdminUsersService suspension (C-07)', () => {
       ConflictException,
     );
     expect(record).not.toHaveBeenCalled();
+  });
+
+  it('revokes every active session of the suspended user in the same transaction (P3-BE01)', async () => {
+    await service.suspendUser(adminUserId, '3');
+
+    expect(revokeSessions).toHaveBeenCalledTimes(1);
+    const [criteria, changes] = revokeSessions.mock.calls[0] as [
+      Record<string, unknown>,
+      Record<string, unknown>,
+    ];
+    expect(criteria).toMatchObject({ userId: '3' });
+    expect(JSON.stringify(criteria.revokedAt)).toContain('isNull');
+    expect(changes).toMatchObject({ revokedReason: 'ACCOUNT_SUSPENDED' });
+    expect(changes.revokedAt).toBeInstanceOf(Date);
+  });
+
+  it('revokes nothing when the suspension is rejected', async () => {
+    await expect(service.suspendUser(adminUserId, '2')).rejects.toBeInstanceOf(ConflictException);
+
+    expect(revokeSessions).not.toHaveBeenCalled();
+  });
+
+  it('does not touch sessions on reactivation (old sessions stay revoked)', async () => {
+    await service.reactivateUser(adminUserId, '5');
+
+    expect(revokeSessions).not.toHaveBeenCalled();
   });
 
   it('does not restrict reactivation (unchanged)', async () => {
