@@ -30,6 +30,8 @@ import type { NotificationPayload, NotificationTargetType, NotificationType } fr
 
 @Entity({ name: 'notifications' })
 @Unique('uq_notifications_recipient_event', ['recipientUserId', 'eventKey'])
+// P3-BE06-02: target of fk_notification_deliveries_notification (job recipient = notification recipient).
+@Unique('uq_notifications_id_recipient', ['id', 'recipientUserId'])
 @Check(
   'chk_notifications_type',
   `"type" IN ('BOOKING_CREATED', 'BOOKING_CONFIRMED', 'BOOKING_REJECTED', 'BOOKING_CANCELLED', 'BOOKING_COMPLETED', 'BOOKING_NO_SHOW', 'PAYMENT_STATUS_CHANGED', 'REVIEW_RECEIVED', 'COMPLAINT_CREATED', 'COMPLAINT_STATUS_CHANGED', 'PROVIDER_APPROVED', 'PROVIDER_REJECTED', 'PROVIDER_SUSPENDED', 'SYSTEM_ANNOUNCEMENT')`,

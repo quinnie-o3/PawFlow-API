@@ -6,6 +6,7 @@ import { AvailabilitySlot } from '../availability/entities/availability-slot.ent
 import { ProviderStaff } from '../providers/entities/provider-staff.entity';
 import { Provider } from '../providers/entities/provider.entity';
 import { assertProviderCanConfirmBookings } from '../providers/provider-lifecycle.policy';
+import type { BookingEventsService } from './booking-events.service';
 import { BookingsService } from './bookings.service';
 import { BookingStatusLog } from './entities/booking-status-log.entity';
 import { Booking } from './entities/booking.entity';
@@ -130,7 +131,7 @@ function createHarness(approvalStatus: Status) {
     state,
     events,
     writes,
-    bookings: new BookingsService(dataSource as unknown as DataSource),
+    bookings: new BookingsService(dataSource as unknown as DataSource, { record: jest.fn().mockResolvedValue(undefined) } as unknown as BookingEventsService),
     status: (id: string) => state.bookings.find((row) => row.id === id)!.status,
   };
 }

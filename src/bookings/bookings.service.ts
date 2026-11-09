@@ -30,6 +30,7 @@ import { NoShowBookingDto } from './dto/no-show-booking.dto';
 import { RejectBookingDto } from './dto/reject-booking.dto';
 import { BookingIdempotencyKey } from './entities/booking-idempotency-key.entity';
 import { BookingStatusLog } from './entities/booking-status-log.entity';
+import { BookingEventsService } from './booking-events.service';
 import { Booking } from './entities/booking.entity';
 
 /** Relations read by the customer booking view (P2-08B). */
@@ -48,7 +49,13 @@ export interface IdempotentBookingResult {
 
 @Injectable()
 export class BookingsService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    // P3-BE06-03: inbox notifications + push-delivery intents of each status
+    // transition, written with the caller's manager inside the transition's
+    // transaction, right after its status-log row.
+    private readonly bookingEvents: BookingEventsService,
+  ) {}
 
   async createBooking(
     customerId: string,
@@ -319,7 +326,7 @@ export class BookingsService {
     slot.bookedCount += 1;
     await slotsRepository.save(slot);
 
-    await bookingLogsRepository.save(
+    const createdLog = await bookingLogsRepository.save(
       bookingLogsRepository.create({
         bookingId: savedBooking.id,
         oldStatus: null,
@@ -328,6 +335,12 @@ export class BookingsService {
         reason: null,
       }),
     );
+    await this.bookingEvents.record(manager, {
+      bookingId: savedBooking.id,
+      statusLogId: createdLog.id,
+      newStatus: 'PENDING_CONFIRMATION',
+      actorUserId: customerId,
+    });
 
     // Relations of the customer booking view, all loaded above (P2-08B).
     savedBooking.pet = pet;
@@ -415,7 +428,7 @@ export class BookingsService {
       booking.status = 'CONFIRMED';
       const savedBooking = await bookingsRepository.save(booking);
 
-      await bookingLogsRepository.save(
+      const confirmedLog = await bookingLogsRepository.save(
         bookingLogsRepository.create({
           bookingId: savedBooking.id,
           oldStatus: 'PENDING_CONFIRMATION',
@@ -424,6 +437,12 @@ export class BookingsService {
           reason: null,
         }),
       );
+      await this.bookingEvents.record(manager, {
+        bookingId: savedBooking.id,
+        statusLogId: confirmedLog.id,
+        newStatus: 'CONFIRMED',
+        actorUserId: user.id,
+      });
 
       return this.findProviderBookingView(manager, savedBooking.id);
     });
@@ -450,7 +469,7 @@ export class BookingsService {
 
       const savedBooking = await bookingsRepository.save(booking);
       await slotsRepository.save(slot);
-      await bookingLogsRepository.save(
+      const cancelledLog = await bookingLogsRepository.save(
         bookingLogsRepository.create({
           bookingId: savedBooking.id,
           oldStatus,
@@ -459,6 +478,12 @@ export class BookingsService {
           reason: dto?.reason ?? null,
         }),
       );
+      await this.bookingEvents.record(manager, {
+        bookingId: savedBooking.id,
+        statusLogId: cancelledLog.id,
+        newStatus: 'CANCELLED',
+        actorUserId: customerId,
+      });
 
       return this.findCustomerBookingView(manager, savedBooking.id);
     });
@@ -490,7 +515,7 @@ export class BookingsService {
 
       const savedBooking = await bookingsRepository.save(booking);
       await slotsRepository.save(slot);
-      await bookingLogsRepository.save(
+      const rejectedLog = await bookingLogsRepository.save(
         bookingLogsRepository.create({
           bookingId: savedBooking.id,
           oldStatus: 'PENDING_CONFIRMATION',
@@ -499,6 +524,12 @@ export class BookingsService {
           reason: dto?.reason ?? null,
         }),
       );
+      await this.bookingEvents.record(manager, {
+        bookingId: savedBooking.id,
+        statusLogId: rejectedLog.id,
+        newStatus: 'REJECTED',
+        actorUserId: user.id,
+      });
 
       return this.findProviderBookingView(manager, savedBooking.id);
     });
@@ -585,7 +616,7 @@ export class BookingsService {
 
       booking.status = newStatus;
       const savedBooking = await bookingsRepository.save(booking);
-      await bookingLogsRepository.save(
+      const transitionLog = await bookingLogsRepository.save(
         bookingLogsRepository.create({
           bookingId: savedBooking.id,
           oldStatus: 'CONFIRMED',
@@ -594,6 +625,12 @@ export class BookingsService {
           reason,
         }),
       );
+      await this.bookingEvents.record(manager, {
+        bookingId: savedBooking.id,
+        statusLogId: transitionLog.id,
+        newStatus,
+        actorUserId: user.id,
+      });
 
       return this.findProviderBookingView(manager, savedBooking.id);
     });

@@ -11,6 +11,7 @@ import { BookingsModule } from './bookings/bookings.module';
 import { ComplaintsModule } from './complaints/complaints.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { PushDeliveryModule } from './push-delivery/push-delivery.module';
 import { PushDevicesModule } from './push-devices/push-devices.module';
 import { PaymentsModule } from './payments/payments.module';
 import { PetsModule } from './pets/pets.module';
@@ -71,6 +72,7 @@ import { UsersModule } from './users/users.module';
     AuthModule,
     NotificationsModule,
     PushDevicesModule,
+    PushDeliveryModule,
   ],
 
   controllers: [AppController],

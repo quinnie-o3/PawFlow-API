@@ -27,7 +27,10 @@
     "qa:account-recovery": "node test/qa/account-recovery.cjs",
     "qa:bot-protection": "node test/qa/bot-protection.cjs",
     "qa:notifications": "node test/qa/notifications.cjs",
-    "qa:push-devices": "node test/qa/push-devices.cjs"
+    "qa:push-devices": "node test/qa/push-devices.cjs",
+    "qa:push-outbox": "node test/qa/push-outbox.cjs",
+    "qa:booking-events": "node test/qa/booking-events.cjs",
+    "qa:push-worker": "node test/qa/push-worker.cjs"
   },
   "dependencies": {
     "@nestjs/common": "^12.0.1",
@@ -42,6 +45,7 @@
     "bcrypt": "^6.0.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
+    "firebase-admin": "^14.5.0",
     "nodemailer": "~10.2.1",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",

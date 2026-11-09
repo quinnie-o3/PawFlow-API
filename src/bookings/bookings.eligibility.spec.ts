@@ -10,6 +10,7 @@ import { Pet } from '../pets/entities/pet.entity';
 import { ProviderWorkingHour } from '../providers/entities/provider-working-hour.entity';
 import { Provider } from '../providers/entities/provider.entity';
 import { Service } from '../services/entities/service.entity';
+import type { BookingEventsService } from './booking-events.service';
 import { BookingsService } from './bookings.service';
 import { BookingStatusLog } from './entities/booking-status-log.entity';
 import { Booking } from './entities/booking.entity';
@@ -126,7 +127,7 @@ describe('BookingsService.createBooking eligibility (P2-06B)', () => {
         work({ getRepository: (entity: unknown) => repositories.get(entity) }),
     };
 
-    bookings = new BookingsService(dataSource as unknown as DataSource);
+    bookings = new BookingsService(dataSource as unknown as DataSource, { record: jest.fn().mockResolvedValue(undefined) } as unknown as BookingEventsService);
   });
 
   const book = () =>

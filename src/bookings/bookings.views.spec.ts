@@ -18,6 +18,7 @@ import {
   toProviderBookingDetailView,
   toProviderBookingView,
 } from './booking-views';
+import type { BookingEventsService, BookingTransitionEvent } from './booking-events.service';
 import { BookingsService } from './bookings.service';
 import { BookingStatusLog } from './entities/booking-status-log.entity';
 import { Booking } from './entities/booking.entity';
@@ -86,6 +87,7 @@ describe('BookingsService view loading (P2-08B)', () => {
   let rendered: Array<{ kind: string; sql: string; params: unknown[] }>;
   let viewResult: Booking | null;
   let events: string[];
+  let recorded: Array<{ manager: unknown; event: BookingTransitionEvent }>;
   const owner = { id: '30', role: 'PROVIDER_OWNER' } as AuthenticatedUser;
   const staff = { id: '31', role: 'PROVIDER_STAFF' } as AuthenticatedUser;
 
@@ -145,7 +147,7 @@ describe('BookingsService view loading (P2-08B)', () => {
       const repository = offline.getRepository(entity as never);
       const save = (value: object) => {
         events.push(`save:${(entity as { name: string }).name}`);
-        return Promise.resolve(value);
+        return Promise.resolve(entity === BookingStatusLog ? { ...value, id: '700' } : value);
       };
 
       return Object.assign(Object.create(repository) as object, {
@@ -164,7 +166,16 @@ describe('BookingsService view loading (P2-08B)', () => {
       },
     };
 
-    return new BookingsService(dataSource as unknown as DataSource);
+    recorded = [];
+    const bookingEvents = {
+      record: (m: unknown, event: BookingTransitionEvent) => {
+        events.push('event');
+        recorded.push({ manager: m, event });
+        return Promise.resolve({});
+      },
+    } as unknown as BookingEventsService;
+
+    return new BookingsService(dataSource as unknown as DataSource, bookingEvents);
   }
 
   const selected = (sql: string) =>
@@ -279,5 +290,38 @@ describe('BookingsService view loading (P2-08B)', () => {
       events.lastIndexOf(`save:${BookingStatusLog.name}`),
     );
     expect(events.indexOf('customer-view')).toBeLessThan(events.indexOf('end'));
+  });
+  // P3-BE06-03: each transition records its event with the transaction's
+  // manager, right after its status-log row and before the response view.
+  it.each([
+    ['confirm', 'PENDING_CONFIRMATION', (s: BookingsService) => s.confirmProviderBooking(owner, '100'), 'CONFIRMED', '30'],
+    ['reject', 'PENDING_CONFIRMATION', (s: BookingsService) => s.rejectProviderBooking(staff, '100', { reason: 'Busy' }), 'REJECTED', '31'],
+    ['complete', 'CONFIRMED', (s: BookingsService) => s.completeProviderBooking(staff, '100'), 'COMPLETED', '31'],
+    ['no-show', 'CONFIRMED', (s: BookingsService) => s.noShowProviderBooking(owner, '100', { reason: 'Absent' }), 'NO_SHOW', '30'],
+    ['cancel', 'PENDING_CONFIRMATION', (s: BookingsService) => s.cancelMyBooking('20', '100', { reason: 'x' }), 'CANCELLED', '20'],
+  ] as const)('%s records one event in its transaction after the status log', async (_label, from, act, newStatus, actor) => {
+    const service = createService({ findOneOrFail: jest.fn().mockResolvedValue(viewResult) });
+    if (from === 'CONFIRMED') {
+      jest.spyOn(SelectQueryBuilder.prototype, 'getOne').mockResolvedValueOnce(
+        { id: '100', customerId: '20', providerId: '3', slotId: '12', status: 'CONFIRMED' } as never,
+      );
+    }
+
+    await act(service);
+
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0].event).toEqual({ bookingId: '100', statusLogId: '700', newStatus, actorUserId: actor });
+    expect(events.indexOf('event')).toBeGreaterThan(events.lastIndexOf(`save:${BookingStatusLog.name}`));
+    expect(events.indexOf('event')).toBeLessThan(events.indexOf('end'));
+    expect(events.indexOf('begin')).toBeLessThan(events.indexOf('event'));
+  });
+
+  it('a transition rejected by its guard records no event', async () => {
+    jest.spyOn(SelectQueryBuilder.prototype, 'getOne').mockResolvedValueOnce(
+      { id: '100', customerId: '20', providerId: '3', slotId: '12', status: 'COMPLETED' } as never,
+    );
+
+    await expect(createService().confirmProviderBooking(owner, '100')).rejects.toThrow('Only a pending confirmation booking can be updated');
+    expect(recorded).toHaveLength(0);
   });
 });

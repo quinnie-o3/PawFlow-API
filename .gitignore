@@ -61,3 +61,9 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 # PostgreSQL database backups (pg_dump output) — may contain sensitive data
 pet_care_db_before_activity_logs.backup
 /*.backup
+
+# P3-BE06-04: never commit Firebase / Google service-account keys
+*-firebase-adminsdk-*.json
+service-account*.json
+serviceAccount*.json
+google-application-credentials*.json

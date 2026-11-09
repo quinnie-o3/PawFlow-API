@@ -11,6 +11,7 @@ import { ProviderWorkingHour } from '../providers/entities/provider-working-hour
 import { Provider } from '../providers/entities/provider.entity';
 import { Service } from '../services/entities/service.entity';
 import { fingerprintCreateBookingRequest } from './booking-idempotency';
+import type { BookingEventsService } from './booking-events.service';
 import { BookingsService } from './bookings.service';
 import type { CreateBookingDto } from './dto/create-booking.dto';
 import { BookingIdempotencyKey } from './entities/booking-idempotency-key.entity';
@@ -213,7 +214,7 @@ function createHarness() {
     events,
     failures,
     relations,
-    bookings: new BookingsService(dataSource as unknown as DataSource),
+    bookings: new BookingsService(dataSource as unknown as DataSource, { record: jest.fn().mockResolvedValue(undefined) } as unknown as BookingEventsService),
   };
 }
 
