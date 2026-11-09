@@ -44,17 +44,19 @@ async function main() {
   try {
     // ------------------------------------------------------------ schema
     section('0. Schema, constraints, immutability trigger, migration rehearsal');
-    check(`all ${migrations.length} source migrations applied (last = CreateNotifications), 0 pending DDL`, migrations.length === sourceMigrationCount() && migrations.at(-1) === NEW_MIGRATION && pendingDdl.length === 0, { migrations, pendingDdl });
+    check(`all ${migrations.length} source migrations applied (incl. CreateNotifications), 0 pending DDL`, migrations.length === sourceMigrationCount() && migrations.includes(NEW_MIGRATION) && pendingDdl.length === 0, { migrations, pendingDdl });
     ds = new DataSource({
       type: 'postgres', host: DB.host, port: DB.port, username: DB.user, password: DB.password, database: NAME, synchronize: false,
       entities: [path.join(ROOT, 'dist', '**', '*.entity.js')], migrations: [path.join(ROOT, 'dist', 'database', 'migrations', '*.js')],
     });
     await ds.initialize();
-    await ds.undoLastMigration({ transaction: 'each' });
+    // Undo newest first, down to and including CreateNotifications (later migrations are re-applied below).
+    const undoCount = migrations.length - migrations.indexOf(NEW_MIGRATION);
+    for (let i = 0; i < undoCount; i++) await ds.undoLastMigration({ transaction: 'each' });
     const dropped = (await one(`select to_regclass('notifications') t, (select count(*)::int from pg_proc where proname = 'notifications_guard_update') f`));
     const again = await ds.runMigrations({ transaction: 'each' });
     const pendingAgain = (await ds.driver.createSchemaBuilder().log()).upQueries.length;
-    check('down drops table + trigger function; up again -> 0 pending DDL', dropped.t === null && dropped.f === 0 && again.length === 1 && again[0].name === NEW_MIGRATION && pendingAgain === 0, { dropped, pendingAgain });
+    check('down drops table + trigger function; up again -> 0 pending DDL', dropped.t === null && dropped.f === 0 && again.length === undoCount && again[0].name === NEW_MIGRATION && pendingAgain === 0, { dropped, pendingAgain });
     const idx = (await db.query(`select indexname, indexdef from pg_indexes where tablename = 'notifications'`)).rows;
     check('indexes: (recipient_user_id, id DESC) and partial unread (… ) WHERE read_at IS NULL, unique (recipient, event_key)', idx.some((i) => i.indexname === 'idx_notifications_recipient_id' && /recipient_user_id, id DESC/.test(i.indexdef)) && idx.some((i) => i.indexname === 'idx_notifications_recipient_unread' && /WHERE \(read_at IS NULL\)/.test(i.indexdef)) && idx.some((i) => i.indexname === 'uq_notifications_recipient_event'), idx.map((i) => i.indexname));
 

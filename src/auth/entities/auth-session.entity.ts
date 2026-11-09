@@ -16,6 +16,7 @@ import {
   JoinColumn,
   ManyToOne,
   PrimaryColumn,
+  Unique,
 } from 'typeorm';
 
 import { User } from '../../users/entities/user.entity';
@@ -35,6 +36,8 @@ export const SESSION_REVOKE_REASONS = [
 export type SessionRevokeReason = (typeof SESSION_REVOKE_REASONS)[number];
 
 @Entity({ name: 'auth_sessions' })
+// P3-BE05: target of the composite FK push_devices(auth_session_id, user_id).
+@Unique('uq_auth_sessions_id_user', ['id', 'userId'])
 @Check(
   'chk_auth_sessions_revoked_reason',
   `"revoked_reason" IS NULL OR "revoked_reason" IN ('LOGOUT', 'LOGOUT_ALL', 'SESSION_REVOKED', 'REUSE_DETECTED', 'ACCOUNT_SUSPENDED', 'ACCOUNT_INACTIVE', 'PASSWORD_CHANGED', 'PASSWORD_RESET')`,
