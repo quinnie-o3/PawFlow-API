@@ -10,6 +10,7 @@ import { AvailabilityModule } from './availability/availability.module';
 import { BookingsModule } from './bookings/bookings.module';
 import { ComplaintsModule } from './complaints/complaints.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { NotificationsModule } from './notifications/notifications.module';
 import { PaymentsModule } from './payments/payments.module';
 import { PetsModule } from './pets/pets.module';
 import { ProvidersModule } from './providers/providers.module';
@@ -67,6 +68,7 @@ import { UsersModule } from './users/users.module';
     AdminModule,
     DashboardModule,
     AuthModule,
+    NotificationsModule,
   ],
 
   controllers: [AppController],

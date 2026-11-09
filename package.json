@@ -25,7 +25,8 @@
     "qa:fe-smoke": "node test/qa/fe-smoke.cjs",
     "qa:auth-sessions": "node test/qa/auth-sessions.cjs",
     "qa:account-recovery": "node test/qa/account-recovery.cjs",
-    "qa:bot-protection": "node test/qa/bot-protection.cjs"
+    "qa:bot-protection": "node test/qa/bot-protection.cjs",
+    "qa:notifications": "node test/qa/notifications.cjs"
   },
   "dependencies": {
     "@nestjs/common": "^12.0.1",

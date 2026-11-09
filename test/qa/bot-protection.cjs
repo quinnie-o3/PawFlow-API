@@ -122,18 +122,20 @@ async function main() {
 
   // ------------------------------------------------------------ schema + migration rehearsal
   section('0. Schema and migration rehearsal (disposable database)');
-  check(`all ${migrations.length} source migrations applied (last = CreateAuthRateLimits), 0 pending DDL`, migrations.length === sourceMigrationCount() && migrations.at(-1) === NEW_MIGRATION && pendingDdl.length === 0, { migrations, pendingDdl });
+  check(`all ${migrations.length} source migrations applied (incl. CreateAuthRateLimits), 0 pending DDL`, migrations.length === sourceMigrationCount() && migrations.includes(NEW_MIGRATION) && pendingDdl.length === 0, { migrations, pendingDdl });
   {
     const ds = new DataSource({ type: 'postgres', host: DB.host, port: DB.port, username: DB.user, password: DB.password, database: NAME, synchronize: false, entities: [path.join(ROOT, 'dist', '**', '*.entity.js')], migrations: [path.join(ROOT, 'dist', 'database', 'migrations', '*.js')] });
     await ds.initialize();
     await db.query(`insert into auth_rate_limits values ('login_ip', $1, now(), 1, now() + interval '1 minute')`, ['a'.repeat(64)]);
-    await ds.undoLastMigration({ transaction: 'each' });
+    // Undo newest first, down to and including CreateAuthRateLimits (later migrations are re-applied below).
+    const undoCount = migrations.length - migrations.indexOf(NEW_MIGRATION);
+    for (let i = 0; i < undoCount; i++) await ds.undoLastMigration({ transaction: 'each' });
     const gone = (await one(`select to_regclass('auth_rate_limits') t`)).t === null;
     const usersIntact = (await one(`select to_regclass('auth_user_tokens') t`)).t !== null;
     const again = await ds.runMigrations({ transaction: 'each' });
     const pending = (await ds.driver.createSchemaBuilder().log()).upQueries.length;
     await ds.destroy();
-    check('down drops only auth_rate_limits (P3-BE02 schema intact); up again -> 0 pending DDL', gone && usersIntact && again.length === 1 && again[0].name === NEW_MIGRATION && pending === 0, { gone, usersIntact, again: again.map((m) => m.name), pending });
+    check('down drops only auth_rate_limits (P3-BE02 schema intact); up again -> 0 pending DDL', gone && usersIntact && again.length === undoCount && again[0].name === NEW_MIGRATION && pending === 0, { gone, usersIntact, again: again.map((m) => m.name), pending });
     const rejects = async (sql, params) => db.query(sql, params).then(() => false, () => true);
     check('DB rejects raw (non-HMAC) buckets, hits <= 0 and windows ending before they start', await rejects(`insert into auth_rate_limits values ('login_ip', '10.0.0.1', now(), 1, now() + interval '1 minute')`) && await rejects(`insert into auth_rate_limits values ('login_ip', $1, now(), 0, now() + interval '1 minute')`, ['b'.repeat(64)]) && await rejects(`insert into auth_rate_limits values ('login_ip', $1, now(), 1, now())`, ['c'.repeat(64)]));
   }
