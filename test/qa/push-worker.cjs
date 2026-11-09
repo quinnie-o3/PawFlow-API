@@ -420,12 +420,15 @@ async function main() {
       const def = await bootCase('default', { PUSH_DELIVERY_MODE: 'mock' });
       const stillPending = (await one(`select count(*)::int c from notification_deliveries where id = any($1::bigint[]) and status = 'PENDING'`, [pending])).c;
       check('22. app default: worker disabled (logged), jobs untouched (still PENDING)', def.started && /Push delivery worker disabled/.test(def.log) && stillPending === 2, { stillPending, push: def.log.split('\n').filter((l) => /Push/.test(l)) });
-      const noExec = await bootCase('enabled', { PUSH_DELIVERY_MODE: 'mock', PUSH_WORKER_ENABLED: 'true' });
-      check('PUSH_WORKER_ENABLED=true without a delivery executor (BE06-05) -> the app refuses to start', !noExec.started && /no delivery executor is registered/.test(noExec.log), noExec.log.slice(-400));
       const disabledMode = await bootCase('enabled-disabled', { PUSH_WORKER_ENABLED: 'true' });
       check('PUSH_WORKER_ENABLED=true with push disabled -> configuration error at startup', !disabledMode.started && /requires PUSH_DELIVERY_MODE/.test(disabledMode.log));
       const fb = await bootCase('firebase', { PUSH_DELIVERY_MODE: 'firebase', FIREBASE_PROJECT_ID: 'pawflow-qa-worker' });
       check('23. firebase mode, worker disabled: boots, nothing claimed, no Firebase initialization or Google traffic logged', fb.started && /worker disabled/.test(fb.log) && !/googleapis|invalid-credential|Firebase Admin initialized/i.test(fb.log) && (await one(`select count(*)::int c from notification_deliveries where id = any($1::bigint[]) and status = 'PENDING'`, [pending])).c === 2);
+      // BE06-06 registers the real executor: an enabled worker now starts and processes jobs end to end
+      // (this user has no push device -> NO_DESTINATIONS). The executor-less refusal is covered by push-worker.spec.ts.
+      const enabled = await bootCase('enabled', { PUSH_DELIVERY_MODE: 'mock', PUSH_WORKER_ENABLED: 'true', PUSH_WORKER_POLL_MS: '200' });
+      const doneRows = await all(`select status, last_error_category cat from notification_deliveries where id = any($1::bigint[])`, [pending]);
+      check('PUSH_WORKER_ENABLED=true + mock (BE06-06 executor registered): the app starts the worker and completes the pending jobs (NO_DESTINATIONS)', enabled.started && /Push delivery worker \S+ started/.test(enabled.log) && doneRows.every((r) => r.status === 'DONE' && r.cat === 'NO_DESTINATIONS'), { doneRows, push: enabled.log.split('\n').filter((l) => /Push/.test(l)).slice(0, 6) });
     }
 
     section('8. Network, logs, invariants');

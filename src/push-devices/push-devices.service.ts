@@ -50,6 +50,20 @@ export interface PushSendTarget {
 
 export const PUSH_DEVICE_NOT_FOUND = 'Push device not found';
 const ADVISORY_NAMESPACE = 0x50555348; // 'PUSH'
+
+/**
+ * The single definition of "may receive a push now" (aliases d, s, u; $1 =
+ * user id, $2 = stale days): active registration of that user, live session
+ * of the same user (not revoked, not expired), ACTIVE account, seen within
+ * the stale threshold. Shared by findSendTargets and isSendEligible.
+ */
+const SEND_ELIGIBLE_FROM_WHERE = `
+         FROM push_devices d
+         JOIN auth_sessions s ON s.id = d.auth_session_id AND s.user_id = d.user_id
+         JOIN users u ON u.id = d.user_id
+        WHERE d.user_id = $1 AND d.revoked_at IS NULL
+          AND s.revoked_at IS NULL AND s.expires_at > now() AND u.status = 'ACTIVE'
+          AND d.last_seen_at > now() - make_interval(days => $2)`;
 const REVOKED_RETENTION_DAYS = 30;
 
 interface DeviceRow {
@@ -221,12 +235,7 @@ export class PushDevicesService {
   async findSendTargets(userId: string): Promise<PushSendTarget[]> {
     const rows = (await this.dataSource.query(
       `SELECT d.id::text AS id, d.registration_kind, d.registration_ciphertext, d.platform, d.last_seen_at
-         FROM push_devices d
-         JOIN auth_sessions s ON s.id = d.auth_session_id AND s.user_id = d.user_id
-         JOIN users u ON u.id = d.user_id
-        WHERE d.user_id = $1 AND d.revoked_at IS NULL
-          AND s.revoked_at IS NULL AND s.expires_at > now() AND u.status = 'ACTIVE'
-          AND d.last_seen_at > now() - make_interval(days => $2)
+       ${SEND_ELIGIBLE_FROM_WHERE}
         ORDER BY d.id`,
       [userId, this.staleDays],
     )) as { id: string; registration_kind: RegistrationKind; registration_ciphertext: string; platform: PushPlatform; last_seen_at: Date }[];
@@ -240,6 +249,17 @@ export class PushDevicesService {
       }
     }
     return targets;
+  }
+
+  /**
+   * P3-BE06-06: re-check of ONE destination right before an external send,
+   * with exactly the findSendTargets criteria (same SQL). False when the
+   * device was revoked, rotated, transferred, its session ended, the account
+   * is no longer ACTIVE, or it does not belong to `userId`.
+   */
+  async isSendEligible(deviceId: string, userId: string): Promise<boolean> {
+    const rows = (await this.dataSource.query(`SELECT 1 ${SEND_ELIGIBLE_FROM_WHERE} AND d.id = $3`, [userId, this.staleDays, deviceId])) as unknown[];
+    return rows.length === 1;
   }
 
   /**

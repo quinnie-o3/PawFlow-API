@@ -17,12 +17,14 @@
  *   can change (trigger).
  */
 
-import { Check, Column, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
+import { Check, Column, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn, Unique } from 'typeorm';
 
 import { AuthSession } from '../../auth/entities/auth-session.entity';
 import type { PushPlatform, PushRevocationReason, RegistrationKind } from '../push-device-types';
 
 @Entity({ name: 'push_devices' })
+// P3-BE06-06: target of fk_notification_push_sends_device (a send row's device belongs to the job's recipient).
+@Unique('uq_push_devices_id_user', ['id', 'userId'])
 @Check('chk_push_devices_kind', `"registration_kind" IN ('FID', 'FCM_TOKEN')`)
 @Check('chk_push_devices_platform', `"platform" IN ('WEB', 'ANDROID', 'IOS')`)
 @Check('chk_push_devices_hash', `"registration_hash" ~ '^[0-9a-f]{64}$'`)

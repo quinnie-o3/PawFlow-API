@@ -29,6 +29,8 @@ export type DeliveryStatus = (typeof DELIVERY_STATUSES)[number];
 
 @Entity({ name: 'notification_deliveries' })
 @Unique('uq_notification_deliveries_notification', ['notificationId'])
+// P3-BE06-06: target of fk_notification_push_sends_delivery (per-device rows pinned to the job's recipient).
+@Unique('uq_notification_deliveries_id_recipient', ['id', 'recipientUserId'])
 @Check('chk_notification_deliveries_status', `"status" IN ('PENDING', 'PROCESSING', 'DONE', 'FAILED', 'EXPIRED')`)
 @Check('chk_notification_deliveries_lease', `("status" = 'PROCESSING') = ("lease_owner" IS NOT NULL AND "lease_expires_at" IS NOT NULL)`)
 @Check('chk_notification_deliveries_completed', `("status" IN ('DONE', 'FAILED', 'EXPIRED')) = ("completed_at" IS NOT NULL)`)

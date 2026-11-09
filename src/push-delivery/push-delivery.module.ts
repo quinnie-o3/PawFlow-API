@@ -3,8 +3,12 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 
+import { PushDevicesModule } from '../push-devices/push-devices.module';
+import { PushDevicesService } from '../push-devices/push-devices.service';
+import { PushDispatchExecutor } from './dispatch/push-dispatch.executor';
 import { NotificationDelivery } from './entities/notification-delivery.entity';
-import { PUSH_PROVIDER } from './provider/push-provider.types';
+import { NotificationPushSend } from './entities/notification-push-send.entity';
+import { PUSH_PROVIDER, type PushProvider } from './provider/push-provider.types';
 import { createPushProvider } from './provider/push-providers';
 import { loadPushDeliveryConfig } from './push-delivery.config';
 import { PushOutboxService } from './push-outbox.service';
@@ -18,11 +22,12 @@ import { loadPushWorkerConfig } from './worker/push-worker.config';
  * - BE06-02: transactional outbox (entity + internal enqueue API).
  * - BE06-04: PUSH_PROVIDER (disabled | mock | firebase).
  * - BE06-05: durable worker (claiming, leases, retries, deadlines). Disabled
- *   unless PUSH_WORKER_ENABLED=true, and it refuses to start without a
- *   DELIVERY_JOB_EXECUTOR, which BE06-06 provides. No controller.
+ *   unless PUSH_WORKER_ENABLED=true.
+ * - BE06-06: DELIVERY_JOB_EXECUTOR = PushDispatchExecutor (devices -> provider
+ *   -> per-device outcomes). No controller.
  */
 @Module({
-  imports: [ConfigModule, TypeOrmModule.forFeature([NotificationDelivery])],
+  imports: [ConfigModule, TypeOrmModule.forFeature([NotificationDelivery, NotificationPushSend]), PushDevicesModule],
   providers: [
     PushOutboxService,
     {
@@ -34,6 +39,12 @@ import { loadPushWorkerConfig } from './worker/push-worker.config';
         new Logger('PushDeliveryModule').log(`Push provider: ${provider.name}${config.mode === 'firebase' ? ` (project ${config.firebaseProjectId}, initialized on first send)` : ''}`);
         return provider;
       },
+    },
+    {
+      provide: DELIVERY_JOB_EXECUTOR,
+      inject: [DataSource, PushDevicesService, PUSH_PROVIDER],
+      useFactory: (dataSource: DataSource, devices: PushDevicesService, provider: PushProvider): DeliveryJobExecutor =>
+        new PushDispatchExecutor(dataSource, devices, provider),
     },
     {
       provide: PushDeliveryWorker,

@@ -7,8 +7,9 @@
 | **BE06-03** | Booking events into inbox + outbox | **PASS (2026-11-09)**. Not committed, not deployed. |
 | **BE06-04** | Firebase provider adapter (disabled / mock / firebase) | **PASS (2026-11-09)**. Not committed, not deployed. |
 | **BE06-05** | Durable delivery worker and retry state machine (no executor) | **PASS (2026-11-09)**. Not committed, not deployed. |
-| BE06-06 | Delivery executor: devices, provider, per-device outcomes (assumed) | NOT STARTED (wait for an explicit prompt) |
-| BE06-08 | Development migration preflight | NOT STARTED |
+| **BE06-06** | Device eligibility, provider dispatch, per-device persistence | **PASS (2026-11-09)**. Not committed (on top of checkpoint `90b0012`), not deployed. |
+| **BE06-07** | Full regression, integration security and failure injection | **PASS (2026-11-09)**. No application code changed; added `qa:push-pipeline`. |
+| **BE06-08** | Development migration preflight | **Preflight PASS (2026-11-09)**. Runbook prepared; migration **not applied** to `pet_care_db`; awaiting commit + approval. |
 
 ## BE06-01 (done)
 
@@ -330,6 +331,165 @@ The full Jest regression was not run, as instructed. No booking, notification or
 - **Add durable per-device outcomes** (`notification_push_sends`, `UNIQUE (delivery_id, push_device_id)`, insert-only), extending the pending migration `1796500000000` or a new additive one (§9).
 - Skip devices that already have a final outcome; re-check eligibility right before each send; pass the remaining TTL; call `markInvalid` only on `INVALID_DESTINATION`; honour `signal` and `expiresAt`.
 
-### Next subtask
+### Next subtask (after BE06-05)
 
-**BE06-06.** Do not start until it is explicitly requested.
+**BE06-06.** Done; see below.
+
+## BE06-06 (PASS)
+
+Details: [p3-be06-device-dispatch.md](p3-be06-device-dispatch.md).
+
+- **Checkpoint:** BE06-01 to BE06-05 were committed by the user as `90b0012` (`feat(push): implement booking events, outbox, Firebase adapter and delivery worker`). BE06-06 work is uncommitted on top of it.
+- No live Firebase call. `pet_care_db` untouched (14 migrations; `1796500000000` still pending).
+
+### Files
+
+- **New:**
+  - `src/push-delivery/dispatch/push-dispatch.executor.ts` and `push-dispatch.executor.spec.ts`
+  - `src/push-delivery/entities/notification-push-send.entity.ts`
+  - `test/qa/push-dispatch.cjs`
+  - `docs/phase3/p3-be06-device-dispatch.md`
+- **Modified:**
+  - `src/database/migrations/1796500000000-CreateNotificationDeliveries.ts`: adds `notification_push_sends`, its immutability trigger, and two implied-by-PK uniques.
+  - `src/push-delivery/entities/notification-delivery.entity.ts`, `src/push-devices/entities/push-device.entity.ts`: unique metadata.
+  - `src/push-devices/push-devices.service.ts`: shared eligibility SQL plus `isSendEligible`.
+  - `src/push-delivery/worker/delivery-job.types.ts`, `push-job.store.ts`, `push-delivery.worker.ts`: fenced context capabilities `renewLease`, `finalizedDevices`, `recordDeviceOutcome`. No change to retry, claim or fencing logic.
+  - `src/push-delivery/push-delivery.module.ts`: `DELIVERY_JOB_EXECUTOR` provider, `PushDevicesModule` import.
+  - `package.json`: `qa:push-dispatch`.
+  - `test/qa/push-worker.cjs`: the "enabled without executor refuses" boot check became "enabled + mock starts the worker and completes jobs end to end", because the executor now exists. The refusal is still unit-tested.
+
+### Decisions
+
+1. **The device row id is the registration generation.** P3-BE05 never reuses rows, and its trigger makes them immutable. So `UNIQUE (delivery_id, push_device_id)` is exact; no generation column.
+2. **Insert-only per-device final outcomes** (ACCEPTED / INVALID_DESTINATION / INVALID_REQUEST), with composite FKs pinning job and device to the same recipient. No values or payloads stored.
+3. **Per-device writes and pre-send lease checks are fenced** through worker-bound context capabilities; the executor never sees the token.
+4. **Eligibility is re-checked right before each send** with the same SQL as `findSendTargets`.
+5. **Shared failures stop new sends:** INVALID_PAYLOAD → TERMINAL; CONFIGURATION; DISABLED; quota → RETRY. No device revocation except `INVALID_DESTINATION`, via `markInvalid`, for that row only.
+6. **Per-job send concurrency is 4.** Nothing starts with less than 1 s of the window left; TTL = remaining window.
+
+### Verification
+
+| Check | Result |
+|---|---|
+| `push-dispatch.executor.spec.ts` | 18/18 |
+| `src/push-delivery` + `src/push-devices` (5 suites) | 142/142 |
+| `qa:push-dispatch` (all 30 required cases, incl. 2 real-SIGKILL crash scenarios, account switch, rotation races, two instances, migration down/up) | **38/38**, 2 consecutive runs |
+| `qa:push-worker` | 33/33 |
+| `qa:push-outbox` | 28/28 |
+| `qa:push-devices` | 49/49 |
+| tsc, nest build | clean |
+| lint | 0 errors; 1 pre-existing warning |
+
+The first `qa:push-dispatch` run scored 34/38 because of four **harness** defects:
+
+- the QA gate helper exposed its resolver instead of its promise, so the in-flight races were not really held;
+- the password-reset helper read the verification e-mail instead of the reset e-mail;
+- one row lookup in 24b assumed a single device;
+- the wrong-recipient constraint probe hit the unique key before the FK.
+
+All four were fixed in the test. The race scenarios (17, 24, 26) now genuinely block inside the provider call, and they pass. No product change was needed.
+
+### Remaining risks
+
+- At-least-once delivery: a crash after FCM accepted but before the row was saved re-sends (QA 16 shows it). Ambiguous timeouts may duplicate. Mitigation: the per-notification display tag.
+- A send already in flight cannot be recalled if the user logs out during it.
+- Registrations carry no Firebase project tag, so a foreign-project token is a job-level CONFIGURATION failure.
+- Registrations made after target selection are not included in that attempt.
+- The leftover `pawflow_qa_push_delivery` database is still present (not dropped, as instructed).
+
+### BE06-07 requirements / readiness
+
+- **Full repository regression** (Jest plus all PostgreSQL QA suites, sequentially): `npm test`, `qa:push-dispatch`, `qa:push-worker`, `qa:push-outbox`, `qa:booking-events`, `qa:push-devices`, `qa:notifications`, `qa:auth-sessions`, `qa:account-recovery`, `qa:bot-protection`, `qa:fe-smoke`, `qa:mvp-e2e`.
+- Retention / purge of finished jobs and send rows is still not implemented. Decide whether it belongs to BE06-07 or later.
+- Then the BE06-08 development migration preflight: dump-copy rehearsal of `1796500000000` (now including `notification_push_sends`), deployment ordering, rollback, and an optional live Firebase check with operator credentials.
+
+### Next subtask (after BE06-06)
+
+**BE06-07.** Done; see below.
+
+## BE06-07 (PASS)
+
+Details: [p3-be06-validation.md](p3-be06-validation.md).
+
+A verification task. **No application code changed.**
+
+- **Added:** `test/qa/push-pipeline.cjs` (npm script `qa:push-pipeline`). It is an end-to-end test from booking HTTP transitions through the **application's own** worker and executor to per-device rows. It also covers two new boundaries: a crash before the job is finalized, and a device registered between attempts.
+- **Source:** HEAD `90b0012`, plus the uncommitted BE06-06 and BE06-07 work.
+
+### Results
+
+| Check | Result |
+|---|---|
+| tsc | 0 |
+| lint | 0 errors (1 pre-existing warning) |
+| build | 0 |
+| `npm test` | **53 suites, 1549/1549** |
+| `qa:push-dispatch` | 38/38 |
+| `qa:push-worker` | 33/33 |
+| `qa:push-outbox` | 28/28 |
+| `qa:booking-events` | 32/32 |
+| `qa:push-devices` | 49/49 |
+| `qa:notifications` | 43/43 |
+| `qa:auth-sessions` | 55/55 |
+| `qa:account-recovery` | 91/91 |
+| `qa:bot-protection` | 40/40 |
+| `qa:fe-smoke` | 31/31 |
+| `qa:mvp-e2e` | 110/110 |
+| `qa:push-pipeline` (new) | **18/18**, 2 runs |
+
+- **Totals:** 568/568 PostgreSQL/HTTP checks; every exit code 0.
+- **Run conditions:** suites ran sequentially; no QA database was left behind; `pet_care_db` was verified unchanged before and after (14 migrations, no BE06 tables).
+- **Integrity:** 0 unexpected 5xx; 0 deadlocks.
+
+### Decisions and findings
+
+- **No product bug found.**
+- **Newly registered devices:** a device registered after attempt 1 receives the notification on a later attempt, if one happens; it never receives it after the job is DONE. This is secure (same recipient, full eligibility check) and is now documented.
+- **Firebase project mismatch** cannot be told apart from `PERMISSION_DENIED`, because both map to `messaging/mismatched-credential`. It is therefore `CONFIGURATION`, which never revokes devices. The future hardening options are in validation §7B.
+- **Retention recommendation:** 30 days for DONE/EXPIRED and 90 days for FAILED jobs. Per-device rows cascade with their job. Use batched deletes with `SKIP LOCKED` on `idx_notification_deliveries_finished`. Not implemented.
+
+### BE06-08 prerequisites
+
+See validation §11:
+
+- commit decision;
+- dump-copy migration preflight, including the time to build the new UNIQUE constraints on `notifications` and `push_devices`;
+- old/new build compatibility checks;
+- rollback runbook;
+- push stays disabled in development;
+- optional live Firebase check with operator credentials.
+
+### Next subtask (after BE06-07)
+
+**BE06-08.** Preflight done; see below.
+
+## BE06-08 (preflight PASS, deployment NOT executed)
+
+Runbook and evidence: `D:/ARGGGG/THESIS/pawflow-db-backups/p3be06/RUNBOOK.md`, with `exec/` and `rehearsal/`.
+
+The preflight only. `pet_care_db` received **read-only queries and `pg_dump` only**: still 14 migrations, no BE06 objects. Nothing was committed, deployed or migrated.
+
+### Results
+
+- **Precheck (read-only):** PostgreSQL 15.18. 14 applied, exactly 1 pending (`CreateNotificationDeliveries1796500000000`). No conflicting objects, 0 other connections. Data: 18 users, 9 notifications, 10 push devices (0 active), 0 bookings. `.env` has no `PUSH_*` / `FIREBASE_*` variables, so push stays disabled.
+- **Backup:** `pet_care_db_preflight-p3be06_20261109-210030.dump`, SHA-256 `80c53ce6…8d1a2`, checksum verified. Restored into two copies; **all 23 tables identical** to `pet_care_db` (new `baseline-all.sql` covering every table).
+- **Migration on a copy** (the official CLI, with `DB_DATABASE` override confirmed to win over `.env`): exit 0, one transaction, about 6.5 s; 15/15. The schema change is **additive only**. **Data preserved:** only `migrations` +1 and two empty tables. Unique constraint builds: 115 ms (`notifications`) and 5 ms (`push_devices`), each under a brief exclusive lock, so stop the backend.
+- **Compatibility (probes):**
+  - New build on **unmigrated**, push unset: everything works (booking create/confirm with inbox notifications, devices, logout).
+  - New build on **unmigrated**, push on: **booking create → 500** (`notification_deliveries` missing), rolled back. **So: migrate before ever enabling push.**
+  - New build on migrated: works with push off (0 jobs) and with mock + worker (two jobs DONE, customer device `ACCEPTED@1`).
+  - `a135ed7` (current dev build) and `90b0012` on migrated: work fully.
+- **Rollback rehearsed twice:**
+  - clean copy: data identical (23 tables) and schema identical (0 lines) to before;
+  - copy with live BE06 rows: only the BE06 tables dropped, notifications kept; `a135ed7` works afterwards; re-apply works.
+- **Harness slips caught and corrected** (not product issues):
+  - a malformed `grep` briefly printed "schema identical" without a real comparison. Redone properly: the copy-vs-copy rollback diff is empty, and the copy-vs-source diff is only PostgreSQL's CHECK re-parse on restore (22 lines, present before any migration).
+  - one summary read used an unresolvable path. The probe had run; its result was re-read.
+
+### To deploy (needs the user)
+
+1. Commit the BE06-06/07 working tree.
+2. Approve the runbook steps 1–3 (backup verified by restore, migrate, verify, smoke with disposable accounts).
+3. Keep push unset in development afterwards.
+
+Optional: a live Firebase check with operator-provided non-production credentials; retention task; project-isolation hardening; authorization to drop `pawflow_qa_push_delivery`.

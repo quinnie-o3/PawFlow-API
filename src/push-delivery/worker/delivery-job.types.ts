@@ -8,6 +8,8 @@
  * NO production executor: the worker refuses to start without one.
  */
 
+import type { DeviceFinalOutcome } from '../entities/notification-push-send.entity';
+
 /** A job claimed by this worker (one notification for one recipient). */
 export interface ClaimedJob {
   id: string;
@@ -21,7 +23,23 @@ export interface ClaimedJob {
   leaseToken: string;
 }
 
-/** What the executor receives. No lease token: persistence belongs to the worker. */
+/** One final per-device result (BE06-06). */
+export interface DeviceOutcomeRecord {
+  pushDeviceId: string;
+  outcome: DeviceFinalOutcome;
+  /** Sanitized provider code (required for failures, null for ACCEPTED). */
+  providerCode: string | null;
+  /** When the send to this device was started. */
+  attemptedAt: Date;
+}
+
+export type RecordResult = 'RECORDED' | 'ALREADY_FINAL' | 'LEASE_LOST';
+
+/**
+ * What the executor receives. No lease token: every write the executor may
+ * make goes through capabilities the worker binds to THIS claim (fenced on
+ * its lease token). A lost lease aborts `signal`.
+ */
 export interface DeliveryJobContext {
   jobId: string;
   notificationId: string;
@@ -30,6 +48,12 @@ export interface DeliveryJobContext {
   expiresAt: Date;
   /** Aborted when the lease is lost, the job times out or the worker shuts down: stop sending. */
   signal: AbortSignal;
+  /** BE06-06. Fenced: verifies this claim still owns the job and extends its lease. false = lost (signal aborted): send nothing more. */
+  renewLease(): Promise<boolean>;
+  /** BE06-06. Final per-device outcomes already persisted for this job (any attempt, any worker): device id -> outcome. */
+  finalizedDevices(): Promise<Map<string, DeviceFinalOutcome>>;
+  /** BE06-06. Fenced, idempotent insert of one final per-device outcome. LEASE_LOST = nothing written (signal aborted). */
+  recordDeviceOutcome(record: DeviceOutcomeRecord): Promise<RecordResult>;
 }
 
 /**

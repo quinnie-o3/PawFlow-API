@@ -255,6 +255,9 @@ export class PushDeliveryWorker implements OnApplicationBootstrap, BeforeApplica
   private async execute(job: ClaimedJob, controller: AbortController): Promise<JobExecutionOutcome> {
     let timer: NodeJS.Timeout | undefined;
     try {
+      const leaseLost = () => {
+        if (!controller.signal.aborted) controller.abort(new Error('lease lost'));
+      };
       const running = Promise.resolve().then(() =>
         this.executor!.execute({
           jobId: job.id,
@@ -263,6 +266,19 @@ export class PushDeliveryWorker implements OnApplicationBootstrap, BeforeApplica
           attempt: job.attempt,
           expiresAt: job.expiresAt,
           signal: controller.signal,
+          // Capabilities bound to THIS claim (fenced on its lease token, which the executor never sees).
+          renewLease: async () => {
+            if (controller.signal.aborted) return false;
+            const ok = (await this.store.renew([job], this.config.leaseSeconds)).has(job.id);
+            if (!ok) leaseLost();
+            return ok;
+          },
+          finalizedDevices: () => this.store.finalizedDevices(job.id),
+          recordDeviceOutcome: async (record) => {
+            const result = await this.store.recordDeviceOutcome(job, record);
+            if (result === 'LEASE_LOST') leaseLost();
+            return result;
+          },
         }),
       );
       running.catch(() => undefined);

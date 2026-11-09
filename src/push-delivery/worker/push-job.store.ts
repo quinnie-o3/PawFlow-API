@@ -1,6 +1,7 @@
 import type { DataSource } from 'typeorm';
 
-import type { ClaimedJob } from './delivery-job.types';
+import type { DeviceFinalOutcome } from '../entities/notification-push-send.entity';
+import type { ClaimedJob, DeviceOutcomeRecord, RecordResult } from './delivery-job.types';
 
 /** Returns the instant every comparison uses: null = the database clock (production default; one authority for all instances). */
 export type PushClock = () => Date | null;
@@ -163,6 +164,42 @@ export class PushJobStore {
       [this.now(), limit],
     );
     return rowsOf(result).length;
+  }
+
+  /** BE06-06: final per-device outcomes already persisted for a job (read-only, any attempt). */
+  async finalizedDevices(jobId: string): Promise<Map<string, DeviceFinalOutcome>> {
+    const rows = (await this.dataSource.query(
+      `SELECT push_device_id::text AS device, outcome FROM notification_push_sends WHERE delivery_id = $1`,
+      [jobId],
+    )) as { device: string; outcome: DeviceFinalOutcome }[];
+    return new Map(rows.map((r) => [r.device, r.outcome]));
+  }
+
+  /**
+   * BE06-06: fenced, idempotent insert of one final per-device outcome. The
+   * job row is locked FOR SHARE in the same statement and must still be
+   * PROCESSING under this claim's token, so a worker whose lease was taken
+   * over writes nothing (LEASE_LOST). An existing row for (job, device) is
+   * kept as is (ALREADY_FINAL). The recipient comes from the job; the
+   * composite FK rejects a device of another user.
+   */
+  async recordDeviceOutcome(job: Pick<ClaimedJob, 'id' | 'leaseToken' | 'attempt'>, record: DeviceOutcomeRecord): Promise<RecordResult> {
+    const result = await this.dataSource.query(
+      `WITH j AS (
+         SELECT id, recipient_user_id FROM notification_deliveries
+          WHERE id = $1 AND lease_owner = $2 AND status = 'PROCESSING'
+          FOR SHARE),
+       ins AS (
+         INSERT INTO notification_push_sends (delivery_id, recipient_user_id, push_device_id, outcome, provider_code, attempt, attempted_at)
+         SELECT j.id, j.recipient_user_id, $3, $4, $5, $6, $7 FROM j
+         ON CONFLICT (delivery_id, push_device_id) DO NOTHING
+         RETURNING id)
+       SELECT (SELECT count(*) FROM j)::int AS owned, (SELECT count(*) FROM ins)::int AS inserted`,
+      [job.id, job.leaseToken, record.pushDeviceId, record.outcome, record.providerCode, job.attempt, record.attemptedAt],
+    );
+    const [row] = rowsOf<{ owned: number; inserted: number }>(result);
+    if (!row || row.owned === 0) return 'LEASE_LOST';
+    return row.inserted === 1 ? 'RECORDED' : 'ALREADY_FINAL';
   }
 
   private async fenced(job: Pick<ClaimedJob, 'id' | 'leaseToken'>, set: string, extra: unknown[]): Promise<boolean> {
