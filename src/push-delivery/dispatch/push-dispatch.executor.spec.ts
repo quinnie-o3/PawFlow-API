@@ -39,6 +39,8 @@ function harness(opts: {
     },
   };
   const markInvalid = jest.fn().mockResolvedValue({ revoked: true });
+  // BE07-03: these BE06 scenarios expect delivery, so the recipient is explicitly opted in for the notification.
+  const consent = { getPushConsentForNotification: jest.fn().mockResolvedValue({ optedIn: true, inCurrentEpoch: true }) };
   const devices: DispatchDevices = {
     findSendTargets: jest.fn().mockResolvedValue(opts.targets),
     isSendEligible: jest.fn((id: string) => Promise.resolve(!(opts.ineligible ?? []).includes(id))),
@@ -66,8 +68,8 @@ function harness(opts: {
       return Promise.resolve('RECORDED');
     },
   };
-  const executor = new PushDispatchExecutor(ds, devices, provider, { now: () => NOW, concurrency: 2 });
-  return { executor, ctx, sends, records, finalized, markInvalid, devices, controller, lease, calls, maxInFlight: () => maxInFlight };
+  const executor = new PushDispatchExecutor(ds, devices, provider, consent, { now: () => NOW, concurrency: 2 });
+  return { executor, ctx, sends, records, finalized, markInvalid, devices, controller, lease, calls, consent, maxInFlight: () => maxInFlight };
 }
 
 const ACCEPTED: DeliveryResult = { outcome: 'ACCEPTED', providerMessageId: 'projects/p/messages/1' };
@@ -132,7 +134,7 @@ describe('PushDispatchExecutor', () => {
 
   it('9. INVALID_PAYLOAD: shared terminal, stops further sends, nothing recorded or revoked', async () => {
     const h = harness({ targets: [target('1', FID_A), target('2', FID_B), target('3', FID_C)], results: { [FID_A]: { outcome: 'INVALID_PAYLOAD', code: 'pawflow/payload-too-large' } } });
-    const exec = new PushDispatchExecutor({ query: jest.fn().mockResolvedValue([NOTIFICATION]) } as unknown as DataSource, h.devices, { name: 'mock', send: () => Promise.resolve({ outcome: 'INVALID_PAYLOAD', code: 'pawflow/payload-too-large' }) }, { now: () => NOW, concurrency: 1 });
+    const exec = new PushDispatchExecutor({ query: jest.fn().mockResolvedValue([NOTIFICATION]) } as unknown as DataSource, h.devices, { name: 'mock', send: () => Promise.resolve({ outcome: 'INVALID_PAYLOAD', code: 'pawflow/payload-too-large' }) }, h.consent, { now: () => NOW, concurrency: 1 });
     await expect(exec.execute(h.ctx)).resolves.toEqual({ kind: 'TERMINAL', category: 'INVALID_PAYLOAD', code: 'pawflow/payload-too-large' });
     expect(h.records).toHaveLength(0);
     expect(h.markInvalid).not.toHaveBeenCalled();
@@ -153,7 +155,7 @@ describe('PushDispatchExecutor', () => {
         h.sends.push({ dest, msg: {} as PushMessage });
         return Promise.resolve((dest.value === FID_A ? { outcome: 'TRANSIENT', code: 'messaging/server-unavailable', ambiguous: true, retryAfterMs: 30_000 } : { outcome: 'RATE_LIMITED', code: 'messaging/message-rate-exceeded', retryAfterMs: 120_000 }) as DeliveryResult);
       },
-    }, { now: () => NOW, concurrency: 1 });
+    }, h.consent, { now: () => NOW, concurrency: 1 });
     const out = await sequential.execute(h.ctx);
     expect(out).toEqual({ kind: 'RETRY', category: 'RATE_LIMITED', code: 'messaging/message-rate-exceeded', retryAfterMs: 120_000, ambiguous: true });
     expect(h.sends.map((s) => s.dest.value)).toEqual([FID_A, FID_B]); // C never started after the quota error
@@ -200,7 +202,7 @@ describe('PushDispatchExecutor', () => {
         h.controller.abort(new Error('worker shutdown'));
         return Promise.resolve(ACCEPTED);
       },
-    }, { now: () => NOW, concurrency: 1 });
+    }, h.consent, { now: () => NOW, concurrency: 1 });
     await expect(exec.execute(h.ctx)).resolves.toMatchObject({ kind: 'RETRY', code: 'pawflow/dispatch-aborted' });
     expect(h.records.map((r) => r.pushDeviceId)).toEqual(['1']);
   });
@@ -217,7 +219,7 @@ describe('PushDispatchExecutor', () => {
         h2.lease.owned = false; // reclaimed while the provider call was in flight
         return Promise.resolve({ outcome: 'INVALID_DESTINATION', code: 'messaging/installation-id-not-registered' });
       },
-    }, { now: () => NOW });
+    }, h2.consent, { now: () => NOW });
     await expect(exec.execute(h2.ctx)).resolves.toMatchObject({ kind: 'RETRY', code: 'pawflow/lease-lost' });
     expect(h2.records).toHaveLength(0);
     expect(h2.markInvalid).not.toHaveBeenCalled();

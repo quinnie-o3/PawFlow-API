@@ -79,7 +79,9 @@ export type JobExecutionOutcome =
   | { kind: 'RETRY'; category: 'TRANSIENT' | 'RATE_LIMITED'; code: string; retryAfterMs?: number | null; ambiguous?: boolean }
   | { kind: 'CONFIGURATION'; code: string }
   | { kind: 'TERMINAL'; category: 'INVALID_PAYLOAD' | 'INVALID_REQUEST' | 'NOTIFICATION_MISSING'; code: string }
-  | { kind: 'DISABLED' };
+  | { kind: 'DISABLED' }
+  /** BE07-03: the recipient is not opted in for this notification (authoritative preference read). Terminal, never retried. */
+  | { kind: 'SUPPRESSED'; reason: 'PUSH_OPTED_OUT' };
 
 export interface DeliveryJobExecutor {
   execute(job: DeliveryJobContext): Promise<JobExecutionOutcome>;

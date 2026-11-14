@@ -53,6 +53,10 @@ export function decideTransition(outcome: JobExecutionOutcome, attempt: number, 
       return { to: 'FAILED', category: safeCategory(outcome.category, 'TERMINAL'), code: safeCode(outcome.code) };
     case 'DISABLED':
       return { to: 'FAILED', category: 'PUSH_DISABLED', code: 'pawflow/push-disabled' };
+    case 'SUPPRESSED':
+      // BE07-03: not delivered by the user's choice. DONE (not FAILED), never retried;
+      // a later opt-in must not resurrect it. Not a delivery success either.
+      return { to: 'DONE', category: 'PUSH_OPTED_OUT', code: 'pawflow/push-opted-out' };
     case 'RETRY':
     case 'CONFIGURATION': {
       const category = outcome.kind === 'CONFIGURATION' ? 'CONFIGURATION' : outcome.category === 'RATE_LIMITED' ? 'RATE_LIMITED' : 'TRANSIENT';

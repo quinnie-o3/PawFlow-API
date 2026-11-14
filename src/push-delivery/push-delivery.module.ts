@@ -3,6 +3,8 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 
+import { NotificationPreferencesModule } from '../notification-preferences/notification-preferences.module';
+import { NotificationPreferencesService } from '../notification-preferences/notification-preferences.service';
 import { PushDevicesModule } from '../push-devices/push-devices.module';
 import { PushDevicesService } from '../push-devices/push-devices.service';
 import { PushDispatchExecutor } from './dispatch/push-dispatch.executor';
@@ -27,7 +29,7 @@ import { loadPushWorkerConfig } from './worker/push-worker.config';
  *   -> per-device outcomes). No controller.
  */
 @Module({
-  imports: [ConfigModule, TypeOrmModule.forFeature([NotificationDelivery, NotificationPushSend]), PushDevicesModule],
+  imports: [ConfigModule, TypeOrmModule.forFeature([NotificationDelivery, NotificationPushSend]), PushDevicesModule, NotificationPreferencesModule],
   providers: [
     PushOutboxService,
     {
@@ -42,9 +44,9 @@ import { loadPushWorkerConfig } from './worker/push-worker.config';
     },
     {
       provide: DELIVERY_JOB_EXECUTOR,
-      inject: [DataSource, PushDevicesService, PUSH_PROVIDER],
-      useFactory: (dataSource: DataSource, devices: PushDevicesService, provider: PushProvider): DeliveryJobExecutor =>
-        new PushDispatchExecutor(dataSource, devices, provider),
+      inject: [DataSource, PushDevicesService, PUSH_PROVIDER, NotificationPreferencesService],
+      useFactory: (dataSource: DataSource, devices: PushDevicesService, provider: PushProvider, consent: NotificationPreferencesService): DeliveryJobExecutor =>
+        new PushDispatchExecutor(dataSource, devices, provider, consent),
     },
     {
       provide: PushDeliveryWorker,

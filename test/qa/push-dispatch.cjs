@@ -77,7 +77,9 @@ if (process.argv[2] === '--child') {
     const { PushJobStore } = dist('push-delivery/worker/push-job.store.js');
     const { PushDeliveryWorker } = dist('push-delivery/worker/push-delivery.worker.js');
     const devices = new PushDevicesService(ds, { get: (k) => ({ JWT_SECRET: jwtSecret, NODE_ENV: 'test' })[k] });
-    const executor = new PushDispatchExecutor(ds, devices, makeQaProvider({ hangPrefix: 'qaHang', marker }), { concurrency: 1 });
+    const { NotificationPreferencesService } = dist('notification-preferences/notification-preferences.service.js');
+    const consent = new NotificationPreferencesService(ds, { get: () => undefined });
+    const executor = new PushDispatchExecutor(ds, devices, makeQaProvider({ hangPrefix: 'qaHang', marker }), consent, { concurrency: 1 });
     const w = new PushDeliveryWorker(new PushJobStore(ds), { enabled: true, batchSize: 1, pollMs: 200, leaseSeconds: 10, jobTimeoutMs: 600_000, maxAttempts: 5, retryBaseMs: 30_000, retryMaxMs: 3_600_000, shutdownGraceMs: 0 }, executor, { workerId: 'child-crash' });
     await w.runOnce();
   })().catch((e) => {
@@ -123,7 +125,7 @@ async function main() {
 
   try {
     section('0. Schema and migration');
-    check(`all ${migrations.length} source migrations applied (incl. ${NEW_MIGRATION}); entities = schema (0 pending DDL)`, migrations.length === sourceMigrationCount() && migrations.at(-1) === NEW_MIGRATION && pendingDdl.length === 0, { pendingDdl });
+    check(`all ${migrations.length} source migrations applied (incl. ${NEW_MIGRATION}); entities = schema (0 pending DDL)`, migrations.length === sourceMigrationCount() && migrations.includes(NEW_MIGRATION) && pendingDdl.length === 0, { pendingDdl });
     const cols = (await all(`select column_name from information_schema.columns where table_name = 'notification_push_sends' order by ordinal_position`)).map((r) => r.column_name);
     check('notification_push_sends: ids, outcome, code, attempt, timestamps only (no FID/token/payload/message id column)', cols.join() === 'id,delivery_id,recipient_user_id,push_device_id,outcome,provider_code,attempt,attempted_at,finalized_at', cols);
     const fks = (await all(`select conname, pg_get_constraintdef(oid) d from pg_constraint where conrelid = 'notification_push_sends'::regclass and contype in ('f','u') order by conname`)).map((r) => `${r.conname}: ${r.d}`);
@@ -133,11 +135,13 @@ async function main() {
     await dsB.initialize();
     {
       const before = await one(`select (select count(*)::int from pg_constraint where conrelid = 'push_devices'::regclass) pd, (select count(*)::int from pg_constraint where conrelid = 'notifications'::regclass) nc`);
-      await dsA.undoLastMigration({ transaction: 'each' });
+      // Undo newest first, down to and including the BE06 migration (later migrations are re-applied below).
+      const undoCount = migrations.length - migrations.indexOf(NEW_MIGRATION);
+      for (let i = 0; i < undoCount; i++) await dsA.undoLastMigration({ transaction: 'each' });
       const after = await one(`select to_regclass('notification_push_sends') s, to_regclass('notification_deliveries') d, (select count(*)::int from pg_constraint where conname = 'uq_push_devices_id_user') uq, (select count(*)::int from pg_constraint where conrelid = 'push_devices'::regclass) pd, (select count(*)::int from pg_constraint where conrelid = 'notifications'::regclass) nc, (select count(*)::int from pg_proc where proname in ('notification_push_sends_immutable','notification_deliveries_guard')) fn, to_regclass('push_devices') p`);
       const again = await dsA.runMigrations({ transaction: 'each' });
       const pend = (await dsA.driver.createSchemaBuilder().log()).upQueries.length;
-      check('29. migration down removes only BE06 objects (both tables, functions, the 2 added uniques); push_devices/notifications keep their own constraints; up again -> 0 pending DDL', after.s === null && after.d === null && after.uq === 0 && after.fn === 0 && after.p !== null && after.pd === before.pd - 1 && after.nc === before.nc - 1 && again.length === 1 && pend === 0, { before, after, pend });
+      check('29. migration down removes only BE06 objects (both tables, functions, the 2 added uniques); push_devices/notifications keep their own constraints; up again -> 0 pending DDL', after.s === null && after.d === null && after.uq === 0 && after.fn === 0 && after.p !== null && after.pd === before.pd - 1 && after.nc === before.nc - 1 && again.length === undoCount && again[0].name === NEW_MIGRATION && pend === 0, { before, after, undoCount, pend });
     }
 
     // ------------------------------------------------------------------ setup
@@ -167,6 +171,9 @@ async function main() {
     const user = async (n) => {
       const r = await api('POST', '/auth/register', { body: { fullName: `QA ${n}`, email: mail(n), password: PASSWORD } });
       if (r.status !== 201) throw new Error('register ' + JSON.stringify(r.body));
+      // BE07-03: push is OFF by default; these BE06 scenarios expect delivery, so the recipient opts in first.
+      const pref = await api('PATCH', '/notification-preferences', { token: r.body.accessToken, body: { pushEnabled: true } });
+      if (pref.status !== 200 || pref.body.pushEnabled !== true) throw new Error('opt-in ' + pref.status);
       return { n, id: String(r.body.user.id), t: r.body.accessToken };
     };
     const reg = async (session, value, kind = 'FID') => {
@@ -189,6 +196,9 @@ async function main() {
     const { PushDeliveryWorker } = dist('push-delivery/worker/push-delivery.worker.js');
     const devicesA = new PushDevicesService(dsA, { get: (k) => ({ JWT_SECRET, NODE_ENV: 'test' })[k] });
     const devicesB = new PushDevicesService(dsB, { get: (k) => ({ JWT_SECRET, NODE_ENV: 'test' })[k] });
+    const { NotificationPreferencesService } = dist('notification-preferences/notification-preferences.service.js');
+    const consentA = new NotificationPreferencesService(dsA, { get: () => undefined });
+    const consentB = new NotificationPreferencesService(dsB, { get: () => undefined });
     const provider = makeQaProvider();
     const sentFor = (nid) => provider.sent.filter((s) => s.notificationId === nid);
 
@@ -196,7 +206,7 @@ async function main() {
     const clock = () => new Date(Date.now() + offsetMs);
     const CFG = { enabled: true, batchSize: 5, pollMs: 200, leaseSeconds: 10, jobTimeoutMs: 20_000, maxAttempts: 4, retryBaseMs: 30_000, retryMaxMs: 3_600_000, shutdownGraceMs: 1_000 };
     const makeWorker = ({ ds = dsA, devices = devicesA, prov = provider, cfg = {}, id, concurrency = 4, clk = clock } = {}) =>
-      new PushDeliveryWorker(new PushJobStore(ds, clk), { ...CFG, ...cfg }, new PushDispatchExecutor(ds, devices, prov, { now: () => clk().getTime(), concurrency }), { random: () => 0.5, now: () => clk().getTime(), workerId: id });
+      new PushDeliveryWorker(new PushJobStore(ds, clk), { ...CFG, ...cfg }, new PushDispatchExecutor(ds, devices, prov, ds === dsB ? consentB : consentA, { now: () => clk().getTime(), concurrency }), { random: () => 0.5, now: () => clk().getTime(), workerId: id });
     const run = (opts) => makeWorker(opts).runOnce();
     const quiesce = () => db.query(`update notification_deliveries set status = 'EXPIRED', completed_at = now(), lease_owner = null, lease_expires_at = null where status in ('PENDING','PROCESSING')`);
 

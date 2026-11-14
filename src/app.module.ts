@@ -10,6 +10,7 @@ import { AvailabilityModule } from './availability/availability.module';
 import { BookingsModule } from './bookings/bookings.module';
 import { ComplaintsModule } from './complaints/complaints.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { NotificationPreferencesModule } from './notification-preferences/notification-preferences.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PushDeliveryModule } from './push-delivery/push-delivery.module';
 import { PushDevicesModule } from './push-devices/push-devices.module';
@@ -71,6 +72,7 @@ import { UsersModule } from './users/users.module';
     DashboardModule,
     AuthModule,
     NotificationsModule,
+    NotificationPreferencesModule,
     PushDevicesModule,
     PushDeliveryModule,
   ],

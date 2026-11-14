@@ -44,7 +44,7 @@ async function main() {
 
   try {
     section('0. Migration and schema');
-    check(`all ${migrations.length} source migrations applied (incl. ${NEW_MIGRATION}); entity metadata = schema (0 pending DDL)`, migrations.length === sourceMigrationCount() && migrations[migrations.length - 1] === NEW_MIGRATION && pendingDdl.length === 0, { last: migrations.slice(-2), pendingDdl });
+    check(`all ${migrations.length} source migrations applied (incl. ${NEW_MIGRATION}); entity metadata = schema (0 pending DDL)`, migrations.length === sourceMigrationCount() && migrations.includes(NEW_MIGRATION) && pendingDdl.length === 0, { last: migrations.slice(-2), pendingDdl });
     const cols = (await all(`select column_name from information_schema.columns where table_name = 'notification_deliveries' order by ordinal_position`)).map((r) => r.column_name);
     evidence.columns = cols;
     check('columns: ids, status, attempts, schedule, deadline, lease, error category/code, timestamps — no device, registration, token, credential or content column', cols.join() === 'id,notification_id,recipient_user_id,status,attempt_count,next_attempt_at,expires_at,lease_owner,lease_expires_at,last_error_category,last_error_code,created_at,updated_at,completed_at' && !cols.some((c) => /device|registration|token|fid|credential|secret|title|body|payload/.test(c)), cols);
@@ -231,12 +231,14 @@ async function main() {
 
     section('6. Migration down / up (rollback removes only BE06-02 objects)');
     const before = await one(`select (select count(*)::int from notifications) n, (select count(*)::int from users) u, (select count(*)::int from pg_constraint where conrelid = 'notifications'::regclass) nc`);
-    await dsA.undoLastMigration({ transaction: 'each' });
+    // Undo newest first, down to and including the BE06-02 migration (later migrations are re-applied below).
+    const undoCount = migrations.length - migrations.indexOf(NEW_MIGRATION);
+    for (let i = 0; i < undoCount; i++) await dsA.undoLastMigration({ transaction: 'each' });
     const after = await one(`select to_regclass('notification_deliveries') t, (select count(*)::int from pg_proc where proname = 'notification_deliveries_guard') f, (select count(*)::int from pg_constraint where conname = 'uq_notifications_id_recipient') uq, (select count(*)::int from notifications) n, (select count(*)::int from users) u, (select count(*)::int from pg_constraint where conrelid = 'notifications'::regclass) nc, (select count(*)::int from migrations where name = $1) m`, [NEW_MIGRATION]);
     check('down: table, trigger function and the notifications unique removed; notifications/users data and other notification constraints intact; migration row removed', after.t === null && after.f === 0 && after.uq === 0 && after.n === before.n && after.u === before.u && after.nc === before.nc - 1 && after.m === 0, { before, after });
     const again = await dsA.runMigrations({ transaction: 'each' });
     const pendingAgain = (await dsA.driver.createSchemaBuilder().log()).upQueries.length;
-    check('up again on existing data -> applied, 0 pending DDL', again.length === 1 && again[0].name === NEW_MIGRATION && pendingAgain === 0, { again: again.map((m) => m.name), pendingAgain });
+    check('up again on existing data -> applied, 0 pending DDL', again.length === undoCount && again[0].name === NEW_MIGRATION && pendingAgain === 0, { again: again.map((m) => m.name), pendingAgain });
   } finally {
     if (app) await app.stop().catch(() => undefined);
     for (const ds of [dsA, dsB]) if (ds.isInitialized) await ds.destroy();

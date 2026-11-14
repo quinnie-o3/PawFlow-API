@@ -32,7 +32,9 @@
     "qa:booking-events": "node test/qa/booking-events.cjs",
     "qa:push-worker": "node test/qa/push-worker.cjs",
     "qa:push-dispatch": "node test/qa/push-dispatch.cjs",
-    "qa:push-pipeline": "node test/qa/push-pipeline.cjs"
+    "qa:push-pipeline": "node test/qa/push-pipeline.cjs",
+    "qa:notification-preferences": "node test/qa/notification-preferences.cjs",
+    "qa:push-consent": "node test/qa/push-consent.cjs"
   },
   "dependencies": {
     "@nestjs/common": "^12.0.1",

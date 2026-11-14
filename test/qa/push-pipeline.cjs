@@ -124,7 +124,14 @@ async function main() {
     const ADMIN = await login('admin');
     const CATEGORY = String((await api('POST', '/admin/service-categories', { token: ADMIN, body: { name: `Grooming ${RUN}` } })).body.id);
     const PET_TYPE = String((await api('POST', '/admin/pet-types', { token: ADMIN, body: { name: `Dog ${RUN}` } })).body.id);
-    const register = async (n) => { const r = await api('POST', '/auth/register', { body: { fullName: `QA ${n}`, email: mail(n), password: PASSWORD } }); if (r.status !== 201) throw new Error('register ' + JSON.stringify(r.body)); return { n, t: r.body.accessToken, id: String(r.body.user.id) }; };
+    const register = async (n) => {
+      const r = await api('POST', '/auth/register', { body: { fullName: `QA ${n}`, email: mail(n), password: PASSWORD } });
+      if (r.status !== 201) throw new Error('register ' + JSON.stringify(r.body));
+      // BE07-03: push is OFF by default; this pipeline expects delivery, so every account opts in before any of its notifications exist.
+      const pref = await api('PATCH', '/notification-preferences', { token: r.body.accessToken, body: { pushEnabled: true } });
+      if (pref.status !== 200 || pref.body.pushEnabled !== true) throw new Error('opt-in ' + pref.status);
+      return { n, t: r.body.accessToken, id: String(r.body.user.id) };
+    };
     const customer = async (n) => { const c = await register(n); const pet = await api('POST', '/pets', { token: c.t, body: { petTypeId: PET_TYPE, name: `Pet ${n}` } }); return { ...c, pet: String(pet.body.id) }; };
     const regDevice = async (token, value, kind = 'FID') => { const r = await api('POST', '/push-devices', { token, body: { registrationKind: kind, registrationValue: value, platform: 'WEB' } }); if (r.status !== 200) throw new Error('device ' + r.status); return r.body.device.id; };
     const P = await register('owner');
@@ -201,11 +208,13 @@ async function main() {
     const { PushDeliveryWorker } = dist('push-delivery/worker/push-delivery.worker.js');
     const { MockPushProvider } = dist('push-delivery/provider/push-providers.js');
     const devices = new PushDevicesService(ds, { get: (k) => ({ JWT_SECRET, NODE_ENV: 'test' })[k] });
+    const { NotificationPreferencesService } = dist('notification-preferences/notification-preferences.service.js');
+    const consent = new NotificationPreferencesService(ds, { get: () => undefined });
     const mock = new MockPushProvider(10_000);
     let offsetMs = 0;
     const clock = () => new Date(Date.now() + offsetMs);
     const WCFG = { enabled: true, batchSize: 5, pollMs: 200, leaseSeconds: 10, jobTimeoutMs: 5_000, maxAttempts: 5, retryBaseMs: 30_000, retryMaxMs: 3_600_000, shutdownGraceMs: 500 };
-    const worker = (store, id) => new PushDeliveryWorker(store ?? new PushJobStore(ds, clock), WCFG, new PushDispatchExecutor(ds, devices, mock, { now: () => clock().getTime() }), { random: () => 0.5, now: () => clock().getTime(), workerId: id });
+    const worker = (store, id) => new PushDeliveryWorker(store ?? new PushJobStore(ds, clock), WCFG, new PushDispatchExecutor(ds, devices, mock, consent, { now: () => clock().getTime() }), { random: () => 0.5, now: () => clock().getTime(), workerId: id });
     const jobOfBooking = (bid, type) => one(`select d.id::text jid, n.id::text nid, d.status, d.attempt_count, d.last_error_category cat from notifications n join notification_deliveries d on d.notification_id = n.id where n.target_id = $1 and n.type = $2`, [bid, type]);
     const rowsOf = (jid) => all(`select push_device_id::text dev, outcome, attempt from notification_push_sends where delivery_id = $1 order by push_device_id`, [jid]);
     const mockSends = (nid) => mock.history().filter((h) => h.notificationId === nid);

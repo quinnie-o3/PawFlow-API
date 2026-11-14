@@ -113,6 +113,8 @@ async function main() {
   const DELIVERED = { kind: 'DELIVERED', accepted: 1, failedFinal: 0 };
 
   const user = (await one(`insert into users(full_name, email, password_hash, role, status) values ('QA worker', $1, 'x', 'CUSTOMER', 'ACTIVE') returning id::text id`, [`worker.${RUN}@qa.test`])).id;
+  // BE07-03: opted in before any of its notifications exist (the boot case expects NO_DESTINATIONS, not PUSH_OPTED_OUT).
+  await db.query(`insert into notification_preferences(user_id, push_enabled, push_enabled_at) values ($1, true, now())`, [user]);
   let seq = 0;
   const makeJobs = async (n, expiresInSeconds = 3600) => {
     const ids = [];
