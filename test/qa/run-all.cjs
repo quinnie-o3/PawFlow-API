@@ -8,6 +8,7 @@
  *   npm run qa:all -- booking-races api-security-matrix   # a subset
  *   npm run qa:be10                        # the BE10 suites only
  *   npm run qa:release-security            # P3-BE11 (also part of qa:all)
+ *   npm run qa:all -- --be12               # P3-BE12 release-contract, migration-cli, backup-restore, contract-smoke
  *
  * - Database per suite: pawflow_qa_<suite>_<runId> (QA_DB_NAME). qa-env.cjs
  *   refuses any name that is not pawflow_qa_* or equals the development
@@ -41,11 +42,14 @@ const SUITES = [
   'api-security-matrix', 'admin-audit-atomicity', 'booking-races',
   // P3-BE11
   'release-security',
+  // P3-BE12 (release-contract needs no database; backup-restore needs pg_dump/pg_restore, see PG_BIN)
+  'release-contract', 'migration-cli', 'backup-restore', 'contract-smoke',
 ];
 const BE10 = ['api-security-matrix', 'admin-audit-atomicity', 'booking-races'];
+const BE12 = ['release-contract', 'migration-cli', 'backup-restore', 'contract-smoke'];
 
 const args = process.argv.slice(2);
-const selected = args.includes('--be10') ? BE10 : args.filter((a) => !a.startsWith('--')).length ? args.filter((a) => !a.startsWith('--')) : SUITES;
+const selected = args.includes('--be10') ? BE10 : args.includes('--be12') ? BE12 : args.filter((a) => !a.startsWith('--')).length ? args.filter((a) => !a.startsWith('--')) : SUITES;
 const unknown = selected.filter((s) => !SUITES.includes(s));
 if (unknown.length) {
   console.error(`Unknown suite(s): ${unknown.join(', ')}. Known: ${SUITES.join(', ')}`);

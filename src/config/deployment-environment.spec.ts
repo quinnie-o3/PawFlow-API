@@ -130,6 +130,29 @@ describe('release configuration: staging and production', () => {
   it('Swagger can be enabled explicitly in staging', () => {
     expect(loadReleaseConfig({ ...STAGING, SWAGGER_ENABLED: 'true' }).swaggerEnabled).toBe(true);
   });
+
+  // P3-BE12 regression: e-mail links fell back to http://localhost:3000 in staging/production.
+  describe('e-mail link base with MAIL_TRANSPORT=smtp', () => {
+    const SMTP = { ...STAGING, MAIL_TRANSPORT: 'smtp', SMTP_HOST: 'smtp.example.com' };
+    it.each([
+      ['unset (fallback http://localhost:3000)', {}],
+      ['http', { MAIL_LINK_BASE_URL: 'http://staging.example.com' }],
+      ['localhost', { MAIL_LINK_BASE_URL: 'https://localhost:3000' }],
+      ['loopback IP', { FRONTEND_URL: 'https://127.0.0.1' }],
+      ['not a URL', { MAIL_LINK_BASE_URL: 'staging.example.com' }],
+      ['with credentials', { MAIL_LINK_BASE_URL: 'https://u:p@staging.example.com' }],
+    ])('refuses a link base that is %s', (_name, extra) => {
+      expect(() => loadReleaseConfig({ ...SMTP, ...extra })).toThrow('MAIL_LINK_BASE_URL (or FRONTEND_URL) must be the https URL');
+    });
+    it('accepts an https frontend URL (MAIL_LINK_BASE_URL or FRONTEND_URL, with or without a path)', () => {
+      expect(loadReleaseConfig({ ...SMTP, MAIL_LINK_BASE_URL: 'https://staging.example.com' }).deployed).toBe(true);
+      expect(loadReleaseConfig({ ...SMTP, FRONTEND_URL: 'https://staging.example.com/app' }).deployed).toBe(true);
+    });
+    it('does not apply when e-mail is disabled, nor outside deployed environments', () => {
+      expect(loadReleaseConfig({ ...STAGING, MAIL_TRANSPORT: 'disabled' }).deployed).toBe(true);
+      expect(loadReleaseConfig({ NODE_ENV: 'development', MAIL_TRANSPORT: 'smtp' }).deployed).toBe(false);
+    });
+  });
 });
 
 describe('origin parsing', () => {

@@ -38,6 +38,9 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run build
+      # P3-BE12: frozen release contract (OpenAPI drift, route/Swagger parity,
+      # environment and migration inventories, traceability). No database.
+      - run: npm run contract:check
       - run: npm test -- --ci
 
   postgres-qa:
@@ -65,8 +68,16 @@ jobs:
       QA_DB_USERNAME: postgres
       QA_DB_PASSWORD: postgres
       QA_OUT_DIR: ${{ runner.temp }}/pawflow-qa
+      # P3-BE12 backup-restore: client tools of the server's major version (postgres:15).
+      PG_BIN: /usr/lib/postgresql/15/bin
     steps:
       - uses: actions/checkout@v4
+      - name: PostgreSQL 15 client tools (pg_dump / pg_restore)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y postgresql-client-15
       - uses: actions/setup-node@v4
         with:
           node-version: 22

@@ -63,8 +63,11 @@ pids
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 # PostgreSQL database backups (pg_dump output) — may contain sensitive data
+# P3-BE12: anywhere in the tree; backups belong outside the repository (docs/phase3/p3-be12-backup-restore-runbook.md)
 pet_care_db_before_activity_logs.backup
-/*.backup
+*.backup
+*.dump
+*.dump.sha256
 
 # P3-BE06-04: never commit Firebase / Google service-account keys
 *-firebase-adminsdk-*.json

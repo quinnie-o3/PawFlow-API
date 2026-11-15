@@ -2,15 +2,13 @@ import { Logger, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { SwaggerModule } from '@nestjs/swagger';
 
 import { AppModule } from './app.module';
 import { IDEMPOTENT_REPLAYED_HEADER } from './bookings/booking-idempotency';
 import { applyHttpObservability } from './common/observability/http-observability';
-import {
-  REQUEST_ID_HEADER,
-  REQUEST_ID_PATTERN,
-} from './common/observability/request-id';
+import { REQUEST_ID_HEADER } from './common/observability/request-id';
+import { createOpenApiDocument } from './common/openapi/openapi-document';
 import { sanitizeLogText } from './common/observability/log-fields';
 import {
   loadLoggingConfig,
@@ -85,37 +83,11 @@ async function bootstrap() {
 
   // Swagger / OpenAPI: on by default outside staging/production; there it
   // requires SWAGGER_ENABLED=true (internal documentation is not public by accident).
+  // P3-BE12: the document is built by createOpenApiDocument, shared with
+  // `npm run openapi:export` (docs/api/openapi.json), so the served and the
+  // committed contract are the same document.
   if (release.swaggerEnabled) {
-    const swaggerConfig = new DocumentBuilder()
-      .setTitle('PawFlow API')
-      .setDescription(
-        'REST API documentation for the PawFlow pet care service booking and provider management platform.',
-      )
-      .setVersion('1.0')
-      .addGlobalParameters({
-        in: 'header',
-        name: REQUEST_ID_HEADER,
-        required: false,
-        description:
-          'Optional client correlation ID: 8-128 characters from [A-Za-z0-9._:-], starting with a letter or digit. ' +
-          'Kept when valid, otherwise replaced by a server-generated UUID. Every response (including errors) ' +
-          'returns the authoritative value in the X-Request-ID response header; quote it when reporting a problem.',
-        schema: { type: 'string', pattern: REQUEST_ID_PATTERN.source, maxLength: 128 },
-      })
-      .addBearerAuth(
-        {
-          type: 'http',
-          scheme: 'bearer',
-          bearerFormat: 'JWT',
-        },
-        'access-token',
-      )
-      .build();
-
-    const swaggerDocument = SwaggerModule.createDocument(
-      app,
-      swaggerConfig,
-    );
+    const swaggerDocument = createOpenApiDocument(app);
 
     SwaggerModule.setup('docs', app, swaggerDocument, {
       useGlobalPrefix: true,
