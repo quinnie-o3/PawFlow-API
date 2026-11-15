@@ -20,6 +20,11 @@ type ProviderApprovalStatus = Provider['approvalStatus'];
  * provider is loaded and before any resource lookup, so a blocked provider
  * learns nothing about other resources.
  *
+ * Responding to a review (P3-BE08) publishes new content on the public
+ * profile, so, like confirming a booking, only an APPROVED provider may do
+ * it. Reading the provider's own reviews is a read and stays allowed in
+ * every status.
+ *
  * Confirming a booking is a new commitment, so only an APPROVED provider
  * may do it. Winding down existing bookings (reject a pending one, complete
  * or mark no-show a confirmed one) stays allowed in every status, as does
@@ -53,6 +58,16 @@ export function assertProviderCanConfirmBookings(
   if (provider.approvalStatus !== 'APPROVED') {
     throw new ForbiddenException(
       `A ${provider.approvalStatus} provider cannot confirm bookings`,
+    );
+  }
+}
+
+export function assertProviderCanRespondToReviews(
+  provider: Pick<Provider, 'approvalStatus'>,
+): void {
+  if (provider.approvalStatus !== 'APPROVED') {
+    throw new ForbiddenException(
+      `A ${provider.approvalStatus} provider cannot respond to reviews`,
     );
   }
 }

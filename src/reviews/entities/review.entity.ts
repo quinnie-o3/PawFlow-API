@@ -48,12 +48,19 @@ import {
 // src/reviews/entities/review.entity.ts
 import { Booking } from '../../bookings/entities/booking.entity';
 import { User } from '../../users/entities/user.entity';
+import {
+  REVIEW_RESPONSE_CONSISTENCY_CHECK,
+  REVIEW_RESPONSE_TEXT_CHECK,
+} from '../review-response-text';
 
 @Entity({ name: 'reviews' })
 @Check(
   'chk_reviews_rating',
   `"rating" BETWEEN 1 AND 5`,
 )
+// P3-BE08 (migration 1797500000000). See that migration for the semantics.
+@Check('chk_reviews_response_consistency', REVIEW_RESPONSE_CONSISTENCY_CHECK)
+@Check('chk_reviews_response_text', REVIEW_RESPONSE_TEXT_CHECK)
 export class Review {
   @PrimaryGeneratedColumn({
     type: 'bigint',

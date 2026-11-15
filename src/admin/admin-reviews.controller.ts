@@ -24,6 +24,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import type { AuthenticatedUser } from '../auth/interfaces/authenticated-user.interface';
 import { ParseBigIntIdPipe } from '../common/pipes/parse-bigint-id.pipe';
 import { AdminService } from './admin.service';
+import { ADMIN_REVIEW_SCHEMA } from './dto/admin-review.schema';
 
 @ApiTags('Admin - Reviews')
 @ApiBearerAuth('access-token')
@@ -35,7 +36,7 @@ export class AdminReviewsController {
 
   @Get()
   @ApiOperation({ summary: 'List reviews for moderation' })
-  @ApiOkResponse({ description: 'Reviews returned successfully.' })
+  @ApiOkResponse({ description: 'Reviews returned successfully.', schema: { type: 'array', items: ADMIN_REVIEW_SCHEMA } })
   @ApiUnauthorizedResponse({ description: 'Authentication is required.' })
   @ApiForbiddenResponse({ description: 'Only administrators can access reviews.' })
   getReviews() {
@@ -44,7 +45,7 @@ export class AdminReviewsController {
 
   @Get(':id')
   @ApiOperation({ summary: 'Get review moderation detail' })
-  @ApiOkResponse({ description: 'Review returned successfully.' })
+  @ApiOkResponse({ description: 'Review returned successfully.', schema: ADMIN_REVIEW_SCHEMA })
   @ApiBadRequestResponse({ description: 'Review ID is invalid.' })
   @ApiUnauthorizedResponse({ description: 'Authentication is required.' })
   @ApiForbiddenResponse({ description: 'Only administrators can access reviews.' })
@@ -55,7 +56,7 @@ export class AdminReviewsController {
 
   @Patch(':id/hide')
   @ApiOperation({ summary: 'Hide a visible review' })
-  @ApiOkResponse({ description: 'Review hidden and provider rating recalculated.' })
+  @ApiOkResponse({ description: 'Review hidden and provider rating recalculated. An existing provider response is kept.', schema: ADMIN_REVIEW_SCHEMA })
   @ApiBadRequestResponse({ description: 'Review ID is invalid.' })
   @ApiUnauthorizedResponse({ description: 'Authentication is required.' })
   @ApiForbiddenResponse({ description: 'Only administrators can moderate reviews.' })
@@ -70,7 +71,7 @@ export class AdminReviewsController {
 
   @Patch(':id/restore')
   @ApiOperation({ summary: 'Restore a hidden review' })
-  @ApiOkResponse({ description: 'Review restored and provider rating recalculated.' })
+  @ApiOkResponse({ description: 'Review restored and provider rating recalculated. The provider response, responder and time are unchanged.', schema: ADMIN_REVIEW_SCHEMA })
   @ApiBadRequestResponse({ description: 'Review ID is invalid.' })
   @ApiUnauthorizedResponse({ description: 'Authentication is required.' })
   @ApiForbiddenResponse({ description: 'Only administrators can moderate reviews.' })

@@ -47,6 +47,13 @@ type ReviewAdminResponse = {
   rating: number;
   comment: string | null;
   providerResponse: string | null;
+  /**
+   * P3-BE08-03. The provider user who responded, as `{ id, fullName }`
+   * (no email, phone, role or status). Null when there is no response, or
+   * when the responding account was deleted (`ON DELETE SET NULL`); in the
+   * latter case `providerResponse` and `respondedAt` are still returned.
+   */
+  respondedBy: { id: string; fullName: string } | null;
   respondedAt: Date | null;
   isVisible: boolean;
   createdAt: Date;
@@ -526,6 +533,8 @@ export class AdminService {
     return reviewsRepository
       .createQueryBuilder('review')
       .innerJoinAndSelect('review.booking', 'booking')
+      // Same query, no per-row lookup: only the responder's id and name.
+      .leftJoin('review.respondedByUser', 'responder')
       .select([
         'review.id',
         'review.bookingId',
@@ -533,6 +542,8 @@ export class AdminService {
         'review.comment',
         'review.providerResponse',
         'review.respondedAt',
+        'responder.id',
+        'responder.fullName',
         'review.isVisible',
         'review.createdAt',
         'review.updatedAt',
@@ -574,6 +585,9 @@ export class AdminService {
       rating: review.rating,
       comment: review.comment,
       providerResponse: review.providerResponse,
+      respondedBy: review.respondedByUser
+        ? { id: review.respondedByUser.id, fullName: review.respondedByUser.fullName }
+        : null,
       respondedAt: review.respondedAt,
       isVisible: review.isVisible,
       createdAt: review.createdAt,
