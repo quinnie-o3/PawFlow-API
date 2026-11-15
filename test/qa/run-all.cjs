@@ -61,6 +61,17 @@ if (!fs.existsSync(path.join(ROOT, 'dist', 'main.js'))) {
 }
 
 const RUN_ID = Date.now().toString(36);
+
+/** Masks token-like values and bounds the length of a diagnostic line (QA data is synthetic; defence in depth). */
+function sanitize(line) {
+  return line
+    .replace(/eyJ[\w-]+\.[\w-]+\.[\w-]+/g, '<jwt>')
+    .replace(/Bearer\s+\S+/gi, 'Bearer <redacted>')
+    .replace(/(token|password|secret)("?\s*[:=]\s*"?)[^"',\s}]+/gi, '$1$2<redacted>')
+    .replace(/\b[A-Za-z0-9_-]{40,}\b/g, '<redacted>')
+    .slice(0, 600);
+}
+
 const OUT = process.env.QA_OUT_DIR ?? fs.mkdtempSync(path.join(os.tmpdir(), 'pawflow-qa-all-'));
 const TIMEOUT = Number(process.env.QA_SUITE_TIMEOUT_MS ?? 900_000);
 
@@ -87,7 +98,11 @@ function runSuite(suite) {
       const fail = count(/^FAIL\b/);
       const skip = count(/^SKIP\b/);
       const ok = code === 0 && pass > 0 && fail === 0;
-      resolve({ suite, database: dbName, exitCode: code, pass, fail, skip, ok, seconds: Math.round((Date.now() - started) / 1000) });
+      // Failure diagnostics for the CI job log and summary.json: the FAIL lines (or, after a
+      // crash / timeout without FAIL lines, the end of the output), sanitized and bounded.
+      const lines = output.split(/\r?\n/);
+      const failures = ok ? [] : (fail > 0 ? lines.filter((l) => /^FAIL\b/.test(l)) : lines.filter(Boolean).slice(-15)).slice(0, 20).map(sanitize);
+      resolve({ suite, database: dbName, exitCode: code, pass, fail, skip, ok, seconds: Math.round((Date.now() - started) / 1000), failures });
     });
   });
 }
@@ -99,6 +114,7 @@ function runSuite(suite) {
     const r = await runSuite(suite);
     results.push(r);
     console.log(`${r.ok ? 'OK  ' : 'FAIL'}  ${suite.padEnd(26)} pass ${String(r.pass).padStart(4)}  fail ${r.fail}  skip ${r.skip}  exit ${r.exitCode}  ${r.seconds}s`);
+    for (const line of r.failures) console.log(`        | ${line}`);
   }
   const total = results.reduce((t, r) => ({ pass: t.pass + r.pass, fail: t.fail + r.fail, skip: t.skip + r.skip }), { pass: 0, fail: 0, skip: 0 });
   const okSuites = results.filter((r) => r.ok).length;
