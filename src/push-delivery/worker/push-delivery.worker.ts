@@ -3,6 +3,8 @@ import { hostname } from 'node:os';
 
 import { type BeforeApplicationShutdown, Logger, type OnApplicationBootstrap } from '@nestjs/common';
 
+import { logEvent, runWithJobContext } from '../../common/observability/observability-context';
+
 import type { ClaimedJob, DeliveryJobExecutor, JobExecutionOutcome, JobFinalState } from './delivery-job.types';
 import { MAX_POLL_BACKOFF_MS, type PushWorkerConfig } from './push-worker.config';
 import type { PushJobStore } from './push-job.store';
@@ -30,6 +32,10 @@ const errorTag = (error: unknown): string => {
   const code = typeof e.code === 'string' && /^[A-Za-z0-9/._:-]{1,60}$/.test(e.code) ? e.code : '';
   return `${typeof e.name === 'string' ? e.name.slice(0, 40) : 'Error'}${code ? `(${code})` : ''}`;
 };
+
+/** Error class name only (validated again by the structured logger's allowlist). */
+const errorName = (error: unknown): string | undefined =>
+  typeof error === 'object' && error !== null && typeof (error as { name?: unknown }).name === 'string' ? (error as { name: string }).name : undefined;
 
 /**
  * P3-BE06-05 durable delivery worker (one per application instance; any
@@ -181,7 +187,8 @@ export class PushDeliveryWorker implements OnApplicationBootstrap, BeforeApplica
     try {
       const states = await Promise.all(
         jobs.map((job) =>
-          this.processJob(job, controllers.get(job.id)!).finally(() => {
+          // P3-BE09: job correlation context (jobId, attempt) for every log line of this attempt.
+          runWithJobContext({ jobId: job.id, attempt: job.attempt }, () => this.processJob(job, controllers.get(job.id)!)).finally(() => {
             active.delete(job.id);
             this.inFlight.delete(job.id);
           }),
@@ -213,16 +220,20 @@ export class PushDeliveryWorker implements OnApplicationBootstrap, BeforeApplica
 
   private async processJob(job: ClaimedJob, controller: AbortController): Promise<JobFinalState> {
     const label = `Push job ${job.id} (notification ${job.notificationId}, attempt ${job.attempt})`;
+    // P3-BE09: structured job events (ids, outcome, final state, codes, duration; never content or destinations).
+    const startedAt = process.hrtime.bigint();
+    const event = (level: 'info' | 'warn' | 'error', name: string, fields: Record<string, unknown>, message: string) =>
+      logEvent(this.logger, level, name, { notificationId: job.notificationId, durationMs: Number(process.hrtime.bigint() - startedAt) / 1e6, ...fields }, message);
     try {
       if (job.expiresAt.getTime() <= this.nowMs()) {
         const ok = await this.store.expire(job);
-        this.logger.warn(`${label}: deadline passed before sending -> ${ok ? 'EXPIRED' : 'LOST_LEASE'}`);
+        event('warn', 'push.job.expired', { state: ok ? 'EXPIRED' : 'LOST_LEASE' }, `${label}: deadline passed before sending -> ${ok ? 'EXPIRED' : 'LOST_LEASE'}`);
         return ok ? 'EXPIRED' : 'LOST_LEASE';
       }
 
       const outcome = await this.execute(job, controller);
       if (controller.signal.aborted && this.isLeaseLoss(controller)) {
-        this.logger.warn(`${label}: lease lost during execution; result discarded (another worker owns the job)`);
+        event('warn', 'push.job.lease_lost', { outcome: outcome.kind, state: 'LOST_LEASE' }, `${label}: lease lost during execution; result discarded (another worker owns the job)`);
         return 'LOST_LEASE';
       }
 
@@ -235,13 +246,23 @@ export class PushDeliveryWorker implements OnApplicationBootstrap, BeforeApplica
       const detail = transition.to === 'DONE' ? (transition.category ?? '') : `${transition.category} ${transition.code}`;
       const retry = transition.to === 'RETRY' && state === 'PENDING' ? ` in ${Math.round(transition.delayMs / 1000)}s` : '';
       const line = `${label}: ${outcome.kind}${detail ? ` [${detail}]` : ''} -> ${state}${retry}`;
-      if (state === 'DONE' || state === 'PENDING') this.logger.log(line);
-      else this.logger.warn(line);
+      event(
+        state === 'DONE' || state === 'PENDING' ? 'info' : 'warn',
+        'push.job.completed',
+        {
+          outcome: outcome.kind,
+          state,
+          category: transition.category,
+          code: transition.to === 'DONE' ? undefined : transition.code,
+          retryDelayMs: transition.to === 'RETRY' && state === 'PENDING' ? Math.round(transition.delayMs) : undefined,
+        },
+        line,
+      );
       return state;
     } catch (error) {
       // Persisting failed (e.g. database down): the job stays PROCESSING until
       // its lease expires and is then reclaimed (the attempt may be repeated).
-      this.logger.error(`${label}: result could not be persisted (${errorTag(error)}); the lease will expire and the job will be retried`);
+      event('error', 'push.job.persist_failed', { state: 'PERSIST_FAILED', errorName: errorName(error) }, `${label}: result could not be persisted (${errorTag(error)}); the lease will expire and the job will be retried`);
       return 'PERSIST_FAILED';
     }
   }
