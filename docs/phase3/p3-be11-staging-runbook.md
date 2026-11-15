@@ -41,6 +41,8 @@ The privilege model was rehearsed locally by `qa:release-security` §2. The appl
 
 ## 3. Release procedure
 
+> **Superseded by P3-BE12:** the authoritative release procedure (pre-deployment gates, migration policy, readiness, smoke tests, worker start) is [p3-be12-deploy-rollback-runbook.md](p3-be12-deploy-rollback-runbook.md) §2–§4. The steps below are kept as the BE11 record; where they differ, BE12 applies.
+
 1. **Backup** (restore point): `pg_dump -Fc -d pawflow_staging -f pre-<release>.dump` (and on managed platforms, a snapshot). Record its checksum.
 2. **Build:** `npm ci && npm run build` (CI artefact of the merged commit).
 3. **Migrate** with the owner role, using the project's official command (the one used in the BE07/BE08 rehearsals). `dotenv/config` never overrides exported variables:
@@ -70,6 +72,8 @@ The privilege model was rehearsed locally by `qa:release-security` §2. The appl
 | 10 | Login from the staging frontend | Turnstile passes, tokens issued; `X-Request-ID` visible in browser devtools |
 
 ## 5. Rollback and recovery
+
+> **Superseded by P3-BE12:** rollback cases A/B/C and the reversibility of each migration are in [p3-be12-deploy-rollback-runbook.md](p3-be12-deploy-rollback-runbook.md) §5. Restores go into a **new** database ([p3-be12-backup-restore-runbook.md](p3-be12-backup-restore-runbook.md) §5); the `pg_restore --clean --if-exists` hint below is withdrawn.
 
 | Situation | Action |
 |---|---|
