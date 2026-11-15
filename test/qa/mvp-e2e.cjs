@@ -155,7 +155,7 @@ const procs = {};
 
 function startInstance(port) {
   const env = { ...process.env };
-  for (const key of Object.keys(env)) if (/^(DB_|JWT_|PORT$|QA_|TURNSTILE_|AUTH_RATE_LIMIT|RATE_LIMIT_|TRUST_PROXY$)/.test(key)) delete env[key];
+  for (const key of Object.keys(env)) if (/^(DB_|JWT_|PORT$|QA_|TURNSTILE_|AUTH_RATE_LIMIT|API_RATE_LIMIT|RATE_LIMIT_|TRUST_PROXY$|CORS_ORIGINS$|SWAGGER_|HSTS_|MIGRATIONS_CHECK$|HEALTH_)/.test(key)) delete env[key];
   Object.assign(env, {
     TZ, PORT: String(port), NODE_ENV: 'test',
     DB_HOST: DB.host, DB_PORT: String(DB.port), DB_USERNAME: DB.user, DB_PASSWORD: DB.password, DB_DATABASE: QA_DB,
@@ -163,6 +163,8 @@ function startInstance(port) {
     // P3-BE03: functional E2E, not abuse QA -> explicit, test-only configuration
     // (both refused when NODE_ENV=production). Same as test/qa/qa-env.cjs.
     TURNSTILE_MODE: 'disabled', AUTH_RATE_LIMIT: 'disabled',
+    // P3-BE11: API-wide limits enabled with raised ceilings (see test/qa/qa-env.cjs).
+    RATE_LIMIT_API_IP: '10000000/60', RATE_LIMIT_PUBLIC_IP: '10000000/60', RATE_LIMIT_USER_READ: '10000000/60', RATE_LIMIT_USER_WRITE: '10000000/60',
   });
   const log = fs.openSync(path.join(OUT_DIR, `app-${port}.log`), 'a');
   procs[port] = spawn(process.execPath, [MAIN], { cwd: RUN_DIR, env, stdio: ['ignore', log, log] });
@@ -330,7 +332,7 @@ const cancel = (c, id, body = {}, port) => api('POST', `/bookings/mine/${id}/can
 const bookingRow = (id) => one(`select status, booked_price::text price, slot_id::text slot from bookings where id = $1`, [id]);
 const bookedCount = async (slotId) => (await one('select booked_count::int c from availability_slots where id = $1', [slotId])).c;
 const logsOf = (id) => rows(`select old_status, new_status, changed_by::text by, reason from booking_status_logs where booking_id = $1 order by created_at, id`, [id]);
-const tableHash = async () => (await one(`select md5(string_agg(t || ':' || (xpath('/row/h/text()', query_to_xml(format('select md5(coalesce(string_agg(x::text, ''|'' order by x::text), '''')) h from %I x', t), false, true, '')))[1]::text, ',' order by t)) h from (select tablename t from pg_tables where schemaname = 'public') s`)).h;
+const tableHash = async () => (await one(`select md5(string_agg(t || ':' || (xpath('/row/h/text()', query_to_xml(format('select md5(coalesce(string_agg(x::text, ''|'' order by x::text), '''')) h from %I x', t), false, true, '')))[1]::text, ',' order by t)) h from (select tablename t from pg_tables where schemaname = 'public' and tablename <> 'auth_rate_limits') s`)).h; // P3-BE11: request counters change on every request by design
 
 // ================================================================== main
 

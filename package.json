@@ -42,6 +42,7 @@
     "qa:api-security-matrix": "node test/qa/api-security-matrix.cjs",
     "qa:admin-audit-atomicity": "node test/qa/admin-audit-atomicity.cjs",
     "qa:booking-races": "node test/qa/booking-races.cjs",
+    "qa:release-security": "node test/qa/release-security.cjs",
     "qa:be10": "node test/qa/run-all.cjs --be10",
     "qa:all": "node test/qa/run-all.cjs"
   },

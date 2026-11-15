@@ -59,6 +59,8 @@ const PUBLIC_ROUTES = [
   'GET /pet-types', 'GET /service-categories',
   'GET /providers/public/search', 'GET /providers/public/:id', 'GET /reviews/provider/:providerId',
   'GET /services/public', 'GET /services/public/search', 'GET /services/public/:id',
+  // P3-BE11 health probes: public by design, minimal status only, no business data.
+  'GET /health/live', 'GET /health/ready',
 ];
 
 /** Routes that end the caller's own session(s) or credentials: exercised last, never in the shared-token sweeps. */
@@ -90,8 +92,12 @@ async function main() {
   };
   const mail = (n) => `${n}.${RUN}@qa.test`;
 
-  /** Byte-level fingerprint of every application table (md5 of all rows, ordered). */
-  const tables = (await all(`select tablename from pg_tables where schemaname = 'public' and tablename <> 'migrations' order by 1`)).map((t) => t.tablename);
+  /**
+   * Byte-level fingerprint of every application table (md5 of all rows, ordered). P3-BE11:
+   * auth_rate_limits is excluded: it holds operational request counters that every request,
+   * including a rejected one, increments by design (asserted in qa:release-security).
+   */
+  const tables = (await all(`select tablename from pg_tables where schemaname = 'public' and tablename not in ('migrations', 'auth_rate_limits') order by 1`)).map((t) => t.tablename);
   const snapshot = async () => {
     const out = {};
     for (const t of tables) out[t] = (await one(`select md5(coalesce(string_agg(x::text, '|' order by x::text), '')) h, count(*)::int n from "${t}" x`)).h;

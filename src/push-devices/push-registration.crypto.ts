@@ -1,5 +1,7 @@
 import { createCipheriv, createDecipheriv, createHmac, hkdfSync, randomBytes } from 'node:crypto';
 
+import { isDeployedEnvironment } from '../config/deployment-environment';
+
 import type { ConfigService } from '@nestjs/config';
 
 /**
@@ -41,13 +43,15 @@ function decodeKey(raw: string, what: string, minBytes: number, exactBytes?: num
 }
 
 export function loadPushRegistrationKeys(config: ConfigService): PushRegistrationKeys {
-  const production = config.get<string>('NODE_ENV') === 'production';
+  // P3-BE11: staging is a deployed environment too (no development keys derived from JWT_SECRET).
+  const nodeEnvName = config.get<string>('NODE_ENV')?.trim().toLowerCase() ?? '';
+  const production = isDeployedEnvironment(nodeEnvName);
   const rawKeys = config.get<string>('PUSH_REGISTRATION_KEYS')?.trim();
   const rawHash = config.get<string>('PUSH_REGISTRATION_HASH_KEY')?.trim();
 
   if (!rawKeys || !rawHash) {
     if (production) {
-      throw new Error('PUSH_REGISTRATION_KEYS and PUSH_REGISTRATION_HASH_KEY are required when NODE_ENV=production');
+      throw new Error(`PUSH_REGISTRATION_KEYS and PUSH_REGISTRATION_HASH_KEY are required when NODE_ENV=${nodeEnvName}`);
     }
     if (rawKeys || rawHash) {
       throw new Error('Set both PUSH_REGISTRATION_KEYS and PUSH_REGISTRATION_HASH_KEY, or neither (development only)');

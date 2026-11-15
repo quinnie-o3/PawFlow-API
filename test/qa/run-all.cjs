@@ -7,6 +7,7 @@
  *   npm run qa:all                         # every suite
  *   npm run qa:all -- booking-races api-security-matrix   # a subset
  *   npm run qa:be10                        # the BE10 suites only
+ *   npm run qa:release-security            # P3-BE11 (also part of qa:all)
  *
  * - Database per suite: pawflow_qa_<suite>_<runId> (QA_DB_NAME). qa-env.cjs
  *   refuses any name that is not pawflow_qa_* or equals the development
@@ -38,6 +39,8 @@ const SUITES = [
   'push-consent', 'provider-feedback', 'review-moderation', 'observability-audit',
   // P3-BE10
   'api-security-matrix', 'admin-audit-atomicity', 'booking-races',
+  // P3-BE11
+  'release-security',
 ];
 const BE10 = ['api-security-matrix', 'admin-audit-atomicity', 'booking-races'];
 

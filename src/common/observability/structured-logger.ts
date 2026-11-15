@@ -37,14 +37,16 @@ export interface LoggingConfig {
  * production, `debug` otherwise. Invalid values stop the startup.
  */
 export function loadLoggingConfig(env: Readonly<Record<string, string | undefined>>): LoggingConfig {
-  const production = env.NODE_ENV === 'production';
+  // P3-BE11: staging is a deployed environment too.
+  const nodeEnvName = env.NODE_ENV?.trim().toLowerCase() ?? '';
+  const production = nodeEnvName === 'production' || nodeEnvName === 'staging';
 
   const format = (env.LOG_FORMAT ?? 'json').trim().toLowerCase();
   if (format !== 'json' && format !== 'text') {
     throw new Error('LOG_FORMAT must be "json" or "text"');
   }
   if (format === 'text' && production) {
-    throw new Error('LOG_FORMAT=text is not allowed when NODE_ENV=production');
+    throw new Error(`LOG_FORMAT=text is not allowed when NODE_ENV=${nodeEnvName}`);
   }
 
   const level = (env.LOG_LEVEL ?? (production ? 'info' : 'debug')).trim().toLowerCase();

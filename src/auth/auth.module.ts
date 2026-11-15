@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -19,6 +20,7 @@ import { EmailVerificationService } from './email-verification.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
 import { AuthRateLimit } from './rate-limit/auth-rate-limit.entity';
+import { ApiRateLimitGuard, ApiUserRateLimitInterceptor } from './rate-limit/api-rate-limit';
 import { AuthRateLimitGuard } from './rate-limit/auth-rate-limit.guard';
 import { AuthRateLimitService } from './rate-limit/auth-rate-limit.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
@@ -51,6 +53,10 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     TurnstileService,
     AuthRateLimitService,
     AuthRateLimitGuard,
+    // P3-BE11 API-wide rate limits: per-IP guard before every controller guard,
+    // per-user interceptor after authentication (same PostgreSQL counters).
+    { provide: APP_GUARD, useClass: ApiRateLimitGuard },
+    { provide: APP_INTERCEPTOR, useClass: ApiUserRateLimitInterceptor },
     JwtStrategy,
     JwtAuthGuard,
     RolesGuard,

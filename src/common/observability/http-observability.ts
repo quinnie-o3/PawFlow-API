@@ -142,6 +142,28 @@ export function annotateRequestFailure(request: unknown, exception: unknown): vo
   }
 }
 
+/**
+ * Sets `Retry-After` (seconds) for HTTP errors whose body carries
+ * `retryAfterSeconds` (429 rate limit / cooldown, 503 dependency or
+ * rate-limit store unavailable). Used by the global filter (P3-BE11: 429s
+ * from the API-wide limits occur on every controller) and RetryAfterFilter.
+ */
+export function applyRetryAfterHeader(host: ArgumentsHost, exception: unknown): void {
+  try {
+    if (host.getType() !== 'http' || !(exception instanceof HttpException)) return;
+    const body = exception.getResponse();
+    const seconds =
+      typeof body === 'object' && body !== null && 'retryAfterSeconds' in body
+        ? Number((body as { retryAfterSeconds: unknown }).retryAfterSeconds)
+        : NaN;
+    if (!Number.isInteger(seconds) || seconds <= 0) return;
+    const response = host.switchToHttp().getResponse<Response>();
+    if (!response.headersSent) response.setHeader('Retry-After', String(seconds));
+  } catch {
+    // Never let a header helper break error rendering.
+  }
+}
+
 /** annotateRequestFailure for an exception-filter host; best effort, never throws. */
 export function annotateHostFailure(host: ArgumentsHost, exception: unknown): void {
   try {
@@ -165,6 +187,7 @@ export function annotateHostFailure(host: ArgumentsHost, exception: unknown): vo
 export class ObservabilityExceptionFilter extends BaseExceptionFilter {
   override catch(exception: unknown, host: ArgumentsHost): void {
     annotateHostFailure(host, exception);
+    applyRetryAfterHeader(host, exception);
     super.catch(exception, host);
   }
 
