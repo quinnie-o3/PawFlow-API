@@ -153,12 +153,14 @@ function createApp(name, ports, { logDir = os.tmpdir(), jwtSecret = randomUUID()
   return {
     ports,
     start: () => Promise.all(ports.map(start)),
-    stop: () => Promise.all(ports.map((port) => new Promise((resolve) => {
+    // signal: default SIGTERM = graceful shutdown on POSIX (shutdown hooks run). Crash simulations must
+    // pass 'SIGKILL': on Windows every kill is a hard TerminateProcess, on Linux only SIGKILL is.
+    stop: (signal = 'SIGTERM') => Promise.all(ports.map((port) => new Promise((resolve) => {
       const child = procs[port];
       // Already exited (normally or by signal): stopping twice must not wait for an 'exit' that already fired.
       if (!child || child.exitCode !== null || child.signalCode !== null) return resolve();
       child.once('exit', resolve);
-      child.kill();
+      child.kill(signal);
     }))),
   };
 }
