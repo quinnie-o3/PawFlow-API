@@ -1,0 +1,87 @@
+# P3-BE10 continuous integration: verification + automated API QA.
+#
+# - No deployment step, no repository secrets, no external credentials.
+# - PostgreSQL is a throw-away service container: the QA scripts and the
+#   E2E suite create their own pawflow_qa_* databases on it and refuse any
+#   other name. There is no .env and no DB_DATABASE here, so nothing can
+#   reach a development (pet_care_db) or production database.
+# - Push delivery runs in mock / disabled modes only (no Firebase
+#   credentials); external network checks are off (QA_ALLOW_EXTERNAL unset).
+name: CI
+
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [dev, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Lint, typecheck, build, unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm test -- --ci
+
+  postgres-qa:
+    name: E2E and PostgreSQL API QA
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      QA_DB_HOST: localhost
+      QA_DB_PORT: '5432'
+      QA_DB_USERNAME: postgres
+      QA_DB_PASSWORD: postgres
+      QA_OUT_DIR: ${{ runner.temp }}/pawflow-qa
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Full-application E2E (Jest, disposable database)
+        run: npm run test:e2e -- --ci
+      - name: PostgreSQL QA suites (sequential, one disposable database each)
+        run: npm run qa:all
+      - name: Upload QA evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pawflow-qa-evidence
+          path: ${{ runner.temp }}/pawflow-qa
+          retention-days: 7
+          if-no-files-found: ignore

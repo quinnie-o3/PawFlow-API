@@ -331,12 +331,20 @@ async function main() {
 
     // ------------------------------------------------------------ official Cloudflare test keys
     section('6. Real Cloudflare Siteverify with the official test secrets (protocol check)');
+    // P3-BE10: the default QA run makes no external network call (all other sections use the
+    // local Siteverify stub). This optional protocol check against the real endpoint, with
+    // Cloudflare's public test secrets, runs only with QA_ALLOW_EXTERNAL=1.
     let reachable = false;
-    try {
-      const probe = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ secret: '1x0000000000000000000000000000000AA', response: 'XXXX.DUMMY.TOKEN.XXXX' }), signal: AbortSignal.timeout(5000) });
-      reachable = probe.ok;
-    } catch { reachable = false; }
-    if (!reachable) {
+    const externalAllowed = process.env.QA_ALLOW_EXTERNAL === '1';
+    if (externalAllowed) {
+      try {
+        const probe = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ secret: '1x0000000000000000000000000000000AA', response: 'XXXX.DUMMY.TOKEN.XXXX' }), signal: AbortSignal.timeout(5000) });
+        reachable = probe.ok;
+      } catch { reachable = false; }
+    }
+    if (!externalAllowed) {
+      skip('official test keys against challenges.cloudflare.com', 'external network calls disabled; set QA_ALLOW_EXTERNAL=1 to run');
+    } else if (!reachable) {
       skip('official test keys against challenges.cloudflare.com', 'Cloudflare unreachable from this machine');
     } else {
       const cfEnv = (secret) => ({ TURNSTILE_MODE: 'enforce', TURNSTILE_SECRET_KEY: secret, TURNSTILE_EXPECTED_HOSTNAMES: 'example.com', TURNSTILE_CHECK_ACTION: 'false', AUTH_RATE_LIMIT: 'disabled' });
