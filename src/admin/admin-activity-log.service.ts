@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
 
+import { currentRequestId } from '../common/observability/observability-context';
 import {
   type AdminActivityAction,
   type AdminActivityTargetType,
@@ -24,17 +25,31 @@ type AdminActivityLogInput = {
 export class AdminActivityLogService {
   constructor(private readonly dataSource: DataSource) {}
 
+  /**
+   * Persists the audit row through the caller's transaction manager, so the
+   * row commits or rolls back together with the business mutation.
+   *
+   * P3-BE09: when the action runs inside an HTTP request, the request's
+   * correlation ID is added as `metadata.requestId` (no schema change; older
+   * rows simply lack the key). It links the row to the request's log lines;
+   * it is not evidence of who acted: actor identity is `adminUserId`, taken
+   * from the authenticated session, and the ID may have been chosen by the
+   * client (validated, see request-id.ts).
+   */
   async record(
     manager: EntityManager,
     input: AdminActivityLogInput,
   ): Promise<void> {
     const repository = manager.getRepository(AdminActivityLog);
+    const requestId = currentRequestId();
     const activityLog = repository.create({
       adminUserId: input.adminUserId,
       action: input.action,
       targetType: input.targetType,
       targetId: input.targetId,
-      metadata: input.metadata ?? null,
+      metadata: requestId
+        ? { ...input.metadata, requestId }
+        : (input.metadata ?? null),
     });
 
     await repository.save(activityLog);

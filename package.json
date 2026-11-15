@@ -36,7 +36,8 @@
     "qa:notification-preferences": "node test/qa/notification-preferences.cjs",
     "qa:push-consent": "node test/qa/push-consent.cjs",
     "qa:provider-feedback": "node test/qa/provider-feedback.cjs",
-    "qa:review-moderation": "node test/qa/review-moderation.cjs"
+    "qa:review-moderation": "node test/qa/review-moderation.cjs",
+    "qa:observability-audit": "node test/qa/observability-audit.cjs"
   },
   "dependencies": {
     "@nestjs/common": "^12.0.1",

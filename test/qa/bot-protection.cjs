@@ -379,7 +379,7 @@ async function main() {
     const logs = fs.readdirSync(OUT_DIR).filter((f) => f.startsWith(`app-${NAME}-`)).map((f) => fs.readFileSync(path.join(OUT_DIR, f), 'utf8')).join('\n');
     const leakedTokens = seenTokens.filter((t) => t.length > 10 && logs.includes(t)).length;
     check(`logs contain no challenge token (${seenTokens.length} checked), no Turnstile secret, no password`, leakedTokens === 0 && !logs.includes(SECRET) && !logs.includes(PASSWORD) && !logs.includes('XXXX.DUMMY.TOKEN.XXXX'), { leakedTokens });
-    check('logs show the enforcement state, rejections by code and rate-limit policy names', /Turnstile enforcement ON/.test(logs) && /Turnstile rejected login: TURNSTILE_EXPIRED/.test(logs) && /Rate limit exceeded \(login: login_ip\)/.test(logs) && /Trust proxy: \["loopback"\]/.test(logs) && /Trust proxy: off/.test(logs));
+    check('logs show the enforcement state, rejections by code and rate-limit policy names', /Turnstile enforcement ON/.test(logs) && /Turnstile rejected login: TURNSTILE_EXPIRED/.test(logs) && /Rate limit exceeded \(login: login_ip\)/.test(logs) && /Trust proxy: \[\\?"loopback\\?"\]/.test(logs) && /Trust proxy: off/.test(logs));
   } finally {
     // inner block: nothing to release here; see the outer finally
   }
