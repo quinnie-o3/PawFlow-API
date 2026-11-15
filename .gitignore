@@ -40,6 +40,10 @@ lerna-debug.log*
 
 # dotenv environment variable files
 .env
+# P3-BE11: real deployment configuration files are never committed (templates end in .example)
+.env.staging
+.env.production
+.env.*.secret
 .env.development.local
 .env.test.local
 .env.production.local

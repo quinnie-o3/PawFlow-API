@@ -9,7 +9,9 @@ import { AuthModule } from './auth/auth.module';
 import { AvailabilityModule } from './availability/availability.module';
 import { BookingsModule } from './bookings/bookings.module';
 import { ComplaintsModule } from './complaints/complaints.module';
+import { postgresSslOption, type DbSslMode } from './config/deployment-environment';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { HealthModule } from './health/health.module';
 import { NotificationPreferencesModule } from './notification-preferences/notification-preferences.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PushDeliveryModule } from './push-delivery/push-delivery.module';
@@ -56,6 +58,10 @@ import { UsersModule } from './users/users.module';
 
         autoLoadEntities: true,
         synchronize: false,
+
+        // P3-BE11: TLS to PostgreSQL (DB_SSL: disable | require | no-verify;
+        // validated at startup, required explicitly in staging/production).
+        ssl: postgresSslOption((configService.get<string>('DB_SSL')?.trim().toLowerCase() || 'disable') as DbSslMode),
       }),
     }),
 
@@ -75,6 +81,7 @@ import { UsersModule } from './users/users.module';
     NotificationPreferencesModule,
     PushDevicesModule,
     PushDeliveryModule,
+    HealthModule,
   ],
 
   controllers: [AppController],

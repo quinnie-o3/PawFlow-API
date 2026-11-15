@@ -13,7 +13,10 @@ import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 
 import {
+  type ApiRateLimitConfig,
+  type ApiRateLimitScope,
   type AuthRateLimitConfig,
+  loadApiRateLimitConfig,
   loadAuthRateLimitConfig,
   type RateLimitedRoute,
   type RateLimitPolicy,
@@ -65,6 +68,14 @@ export function normalizeClientIp(ip: string | null | undefined): string {
   return 'unknown';
 }
 
+/** Identity of the request for rate limiting; only server-verified values. */
+export interface RateLimitClient {
+  ip?: string | null;
+  email?: unknown;
+  /** Set only from request.user (JwtAuthGuard), never from a header or claim. */
+  userId?: string | null;
+}
+
 export interface RateLimitDecision {
   allowed: boolean;
   retryAfterSeconds: number;
@@ -88,6 +99,8 @@ const CLEANUP_INTERVAL_MS = 5 * 60_000;
 export class AuthRateLimitService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(AuthRateLimitService.name);
   readonly config: AuthRateLimitConfig;
+  /** P3-BE11 API-wide policies (API_RATE_LIMIT). */
+  readonly apiConfig: ApiRateLimitConfig;
   private cleanupTimer: NodeJS.Timeout | null = null;
 
   constructor(
@@ -95,6 +108,7 @@ export class AuthRateLimitService implements OnModuleInit, OnModuleDestroy {
     private readonly dataSource: DataSource,
   ) {
     this.config = loadAuthRateLimitConfig(configService);
+    this.apiConfig = loadApiRateLimitConfig(configService);
 
     if (this.config.mode === 'disabled') {
       this.logger.warn('AUTH_RATE_LIMIT=disabled: authentication endpoints are NOT rate limited (development/test only)');
@@ -105,10 +119,16 @@ export class AuthRateLimitService implements OnModuleInit, OnModuleDestroy {
         .join(', ');
       this.logger.log(`Auth rate limiting ON (${summary})`);
     }
+    if (this.apiConfig.mode === 'disabled') {
+      this.logger.warn('API_RATE_LIMIT=disabled: API-wide rate limits are OFF (development/test only)');
+    } else {
+      const summary = Object.values(this.apiConfig.policies).map((p) => `${p.name}=${p.limit}/${p.windowSeconds}s`).join(', ');
+      this.logger.log(`API rate limiting ON (${summary})`);
+    }
   }
 
   onModuleInit(): void {
-    if (this.config.mode === 'enabled') {
+    if (this.config.mode === 'enabled' || this.apiConfig.mode === 'enabled') {
       this.cleanupTimer = setInterval(() => void this.purgeExpired(), CLEANUP_INTERVAL_MS);
       this.cleanupTimer.unref();
     }
@@ -119,19 +139,33 @@ export class AuthRateLimitService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Counts this request against every policy of the route. Throws 429 / 503. */
-  async consume(route: RateLimitedRoute, client: { ip?: string | null; email?: unknown }): Promise<RateLimitDecision> {
+  async consume(route: RateLimitedRoute, client: RateLimitClient): Promise<RateLimitDecision> {
     if (this.config.mode === 'disabled') {
       return { allowed: true, retryAfterSeconds: 0, hits: {} };
     }
+    return this.consumePolicies(route, this.config.policies[route], client, this.config.hashSecret);
+  }
 
-    const { hashSecret } = this.config;
+  /** P3-BE11: counts this request against API-wide scopes (one atomic statement). Throws 429 / 503. */
+  async consumeApi(scopes: ApiRateLimitScope[], client: RateLimitClient): Promise<RateLimitDecision> {
+    if (this.apiConfig.mode === 'disabled' || scopes.length === 0) {
+      return { allowed: true, retryAfterSeconds: 0, hits: {} };
+    }
+    const { policies, hashSecret } = this.apiConfig;
+    return this.consumePolicies(scopes.join('+'), scopes.map((scope) => policies[scope]), client, hashSecret);
+  }
+
+  private async consumePolicies(label: string, policies: readonly RateLimitPolicy[], client: RateLimitClient, hashSecret: string): Promise<RateLimitDecision> {
     const email = typeof client.email === 'string' ? client.email.trim().toLowerCase() : '';
+    const userId = typeof client.userId === 'string' && /^\d{1,20}$/.test(client.userId) ? client.userId : '';
     const rows: { policy: RateLimitPolicy; bucket: string }[] = [];
 
-    for (const policy of this.config.policies[route]) {
-      const value = policy.key === 'ip' ? normalizeClientIp(client.ip) : email;
+    for (const policy of policies) {
+      const value = policy.key === 'ip' ? normalizeClientIp(client.ip) : policy.key === 'email' ? email : userId;
       // A malformed body has no e-mail key; validation rejects it right after.
       if (policy.key === 'email' && (!value || value.length > 320)) continue;
+      // Per-user policies apply only to requests authenticated by JwtAuthGuard.
+      if (policy.key === 'user' && !value) continue;
       rows.push({ policy, bucket: createHmac('sha256', hashSecret).update(`${policy.name}\0${value}`).digest('hex') });
     }
 
@@ -157,7 +191,7 @@ export class AuthRateLimitService implements OnModuleInit, OnModuleDestroy {
       );
     } catch (error) {
       const reason = error instanceof Error ? `${error.name}: ${error.message}` : 'unknown error';
-      this.logger.error(`Rate-limit store unavailable (${route}): ${reason}`);
+      this.logger.error(`Rate-limit store unavailable (${label}): ${reason}`);
       throw new RateLimitUnavailableException();
     }
 
@@ -180,7 +214,7 @@ export class AuthRateLimitService implements OnModuleInit, OnModuleDestroy {
         .map(([name]) => name)
         .join(',');
       // Policy names only: no IP, e-mail or bucket value.
-      this.logger.warn(`Rate limit exceeded (${route}: ${exceeded}); retry after ${retryAfterSeconds}s`);
+      this.logger.warn(`Rate limit exceeded (${label}: ${exceeded}); retry after ${retryAfterSeconds}s`);
       throw new RateLimitedException(retryAfterSeconds);
     }
 

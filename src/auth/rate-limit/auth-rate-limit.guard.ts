@@ -32,10 +32,12 @@ export class AuthRateLimitGuard implements CanActivate {
     const route = this.reflector.get<RateLimitedRoute | undefined>(RATE_LIMIT_ROUTE, context.getHandler());
     if (!route) return true;
 
-    const request = context.switchToHttp().getRequest<Request>();
+    const request = context.switchToHttp().getRequest<Request & { user?: { id?: unknown } }>();
     const body = (request.body ?? {}) as Record<string, unknown>;
+    // P3-BE11: per-user policies use the id set by JwtAuthGuard (listed before this guard).
+    const userId = typeof request.user?.id === 'string' ? request.user.id : null;
 
-    await this.rateLimits.consume(route, { ip: request.ip, email: body.email });
+    await this.rateLimits.consume(route, { ip: request.ip, email: body.email, userId });
     return true;
   }
 }

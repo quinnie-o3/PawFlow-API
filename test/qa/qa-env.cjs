@@ -110,7 +110,18 @@ async function dropDatabase(name) {
  * allows only when NODE_ENV is not production. Suites that test protection
  * pass `env` overrides, e.g. { TURNSTILE_MODE: 'enforce', ... }.
  */
-const QA_SECURITY_DEFAULTS = { TURNSTILE_MODE: 'disabled', AUTH_RATE_LIMIT: 'disabled' };
+const QA_SECURITY_DEFAULTS = {
+  TURNSTILE_MODE: 'disabled',
+  AUTH_RATE_LIMIT: 'disabled',
+  // P3-BE11: the API-wide limits stay ENABLED in every functional suite (each request runs
+  // the limiter's PostgreSQL upsert), with ceilings raised because one suite sends thousands
+  // of requests from 127.0.0.1 within seconds. The thresholds themselves, 429, Retry-After
+  // and spoofing are tested with production defaults or low limits in qa:release-security.
+  RATE_LIMIT_API_IP: '10000000/60',
+  RATE_LIMIT_PUBLIC_IP: '10000000/60',
+  RATE_LIMIT_USER_READ: '10000000/60',
+  RATE_LIMIT_USER_WRITE: '10000000/60',
+};
 
 function createApp(name, ports, { logDir = os.tmpdir(), jwtSecret = randomUUID() + randomUUID(), env: extraEnv = {} } = {}) {
   assertQaDatabaseName(name);
@@ -120,7 +131,7 @@ function createApp(name, ports, { logDir = os.tmpdir(), jwtSecret = randomUUID()
 
   const start = (port) => {
     const env = { ...process.env };
-    for (const key of Object.keys(env)) if (/^(DB_|JWT_|PORT$|QA_|TURNSTILE_|AUTH_RATE_LIMIT|RATE_LIMIT_|TRUST_PROXY$)/.test(key)) delete env[key];
+    for (const key of Object.keys(env)) if (/^(DB_|JWT_|PORT$|QA_|TURNSTILE_|AUTH_RATE_LIMIT|API_RATE_LIMIT|RATE_LIMIT_|TRUST_PROXY$|CORS_ORIGINS$|SWAGGER_|HSTS_|MIGRATIONS_CHECK$|HEALTH_)/.test(key)) delete env[key];
     Object.assign(env, {
       TZ, PORT: String(port), NODE_ENV: 'test',
       DB_HOST: DB.host, DB_PORT: String(DB.port), DB_USERNAME: DB.user, DB_PASSWORD: DB.password, DB_DATABASE: name,

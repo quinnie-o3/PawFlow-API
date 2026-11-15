@@ -149,6 +149,9 @@ export class AuthController {
   }
 
   @Post('refresh')
+  @UseGuards(AuthRateLimitGuard)
+  @RateLimit('refresh')
+  @ApiTooManyRequestsResponse({ description: RATE_LIMITED })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Rotate the refresh token',
@@ -280,7 +283,10 @@ export class AuthController {
   // ------------------------------------------------------------ P3-BE02
 
   @Post('change-password')
-  @UseGuards(JwtAuthGuard)
+  // Rate limited per authenticated user (after JwtAuthGuard: guards run in order).
+  @UseGuards(JwtAuthGuard, AuthRateLimitGuard)
+  @RateLimit('change-password')
+  @ApiTooManyRequestsResponse({ description: RATE_LIMITED })
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiBearerAuth('access-token')
   @ApiOperation({
@@ -358,6 +364,9 @@ export class AuthController {
   }
 
   @Post('verify-email')
+  @UseGuards(AuthRateLimitGuard)
+  @RateLimit('verify-email')
+  @ApiTooManyRequestsResponse({ description: RATE_LIMITED })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Verify my e-mail address with an e-mailed token',
@@ -375,7 +384,9 @@ export class AuthController {
   }
 
   @Post('verify-email/resend')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, AuthRateLimitGuard)
+  @RateLimit('verify-email-resend')
+  @ApiTooManyRequestsResponse({ description: RATE_LIMITED })
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiBearerAuth('access-token')
   @ApiOperation({

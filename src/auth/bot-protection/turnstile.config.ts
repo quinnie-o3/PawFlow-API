@@ -1,5 +1,7 @@
 import type { ConfigService } from '@nestjs/config';
 
+import { isDeployedEnvironment } from '../../config/deployment-environment';
+
 /**
  * P3-BE03 Cloudflare Turnstile configuration, validated once at startup.
  * Any inconsistency throws, so the application refuses to start instead of
@@ -51,19 +53,21 @@ function flag(value: string | undefined, fallback: boolean, name: string): boole
 }
 
 export function loadTurnstileConfig(config: ConfigService): TurnstileConfig {
-  const production = config.get<string>('NODE_ENV') === 'production';
+  // P3-BE11: staging is a deployed environment too (every fail-closed rule applies).
+  const nodeEnvName = config.get<string>('NODE_ENV')?.trim().toLowerCase() ?? '';
+  const production = isDeployedEnvironment(nodeEnvName);
   const rawMode = config.get<string>('TURNSTILE_MODE')?.trim().toLowerCase();
 
   if (rawMode === undefined || rawMode === '') {
     if (production) {
-      throw new Error('TURNSTILE_MODE must be set to "enforce" when NODE_ENV=production');
+      throw new Error(`TURNSTILE_MODE must be set to "enforce" when NODE_ENV=${nodeEnvName}`);
     }
     return { mode: 'disabled', reason: 'unset' };
   }
 
   if (rawMode === 'disabled') {
     if (production) {
-      throw new Error('TURNSTILE_MODE=disabled is not allowed when NODE_ENV=production');
+      throw new Error(`TURNSTILE_MODE=disabled is not allowed when NODE_ENV=${nodeEnvName}`);
     }
     return { mode: 'disabled', reason: 'explicit' };
   }
@@ -77,7 +81,7 @@ export function loadTurnstileConfig(config: ConfigService): TurnstileConfig {
     throw new Error('TURNSTILE_SECRET_KEY is required when TURNSTILE_MODE=enforce');
   }
   if (production && (TURNSTILE_DUMMY_SECRETS as readonly string[]).includes(secret)) {
-    throw new Error('TURNSTILE_SECRET_KEY is a Cloudflare test secret, which is not allowed when NODE_ENV=production');
+    throw new Error(`TURNSTILE_SECRET_KEY is a Cloudflare test secret, which is not allowed when NODE_ENV=${nodeEnvName}`);
   }
 
   const expectedHostnames = new Set(
@@ -97,12 +101,12 @@ export function loadTurnstileConfig(config: ConfigService): TurnstileConfig {
 
   const checkAction = flag(config.get<string>('TURNSTILE_CHECK_ACTION'), true, 'TURNSTILE_CHECK_ACTION');
   if (production && !checkAction) {
-    throw new Error('TURNSTILE_CHECK_ACTION=false is not allowed when NODE_ENV=production');
+    throw new Error(`TURNSTILE_CHECK_ACTION=false is not allowed when NODE_ENV=${nodeEnvName}`);
   }
 
   const urlOverride = config.get<string>('TURNSTILE_SITEVERIFY_URL')?.trim();
   if (urlOverride && production) {
-    throw new Error('TURNSTILE_SITEVERIFY_URL cannot be overridden when NODE_ENV=production');
+    throw new Error(`TURNSTILE_SITEVERIFY_URL cannot be overridden when NODE_ENV=${nodeEnvName}`);
   }
   if (urlOverride && !/^https?:\/\/[^/\s]+\/\S*$/.test(urlOverride)) {
     throw new Error('TURNSTILE_SITEVERIFY_URL must be an absolute http(s) URL');

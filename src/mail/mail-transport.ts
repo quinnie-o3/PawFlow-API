@@ -5,6 +5,8 @@ import { join, resolve } from 'node:path';
 import type { ConfigService } from '@nestjs/config';
 import { createTransport, type Transporter } from 'nodemailer';
 
+import { isDeployedEnvironment } from '../config/deployment-environment';
+
 /**
  * P3-BE02 minimal, replaceable e-mail delivery.
  *
@@ -94,8 +96,9 @@ export function createMailTransport(config: ConfigService): MailTransport {
       return new DisabledMailTransport();
 
     case 'file': {
-      if (config.get<string>('NODE_ENV') === 'production') {
-        throw new Error('MAIL_TRANSPORT=file is not allowed when NODE_ENV=production');
+      // P3-BE11: staging is a deployed environment too.
+      if (isDeployedEnvironment(config.get<string>('NODE_ENV'))) {
+        throw new Error(`MAIL_TRANSPORT=file is not allowed when NODE_ENV=${config.get<string>('NODE_ENV')?.trim().toLowerCase()}`);
       }
 
       return new FileMailTransport(resolve(config.getOrThrow<string>('MAIL_OUTBOX_DIR')));
