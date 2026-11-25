@@ -452,7 +452,10 @@ export class BookingsService {
     customerId: string,
     bookingId: string,
     dto?: CancelBookingDto,
+    now: Date = new Date(),
   ) {
+    const clock = captureSchedulingClock(now);
+
     return this.dataSource.transaction(async (manager) => {
       const bookingsRepository = manager.getRepository(Booking);
       const bookingLogsRepository =
@@ -463,6 +466,13 @@ export class BookingsService {
       this.assertCustomerOwnsBooking(booking, customerId);
       const oldStatus = this.getCancellableStatus(booking);
       const slot = await this.findLockedSlot(manager, booking.slotId);
+
+      // BR-07: customers may cancel only before the appointment starts.
+      if (hasSlotStarted(slot, clock)) {
+        throw new ConflictException(
+          'Bookings can only be cancelled before the appointment starts',
+        );
+      }
 
       this.releaseReservedSlotCapacity(slot);
       booking.status = 'CANCELLED';
