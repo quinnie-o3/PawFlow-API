@@ -8861,7 +8861,7 @@
     },
     "/api/bookings/mine/{id}/cancel": {
       "post": {
-        "description": "Changes a PENDING_CONFIRMATION or CONFIRMED booking to CANCELLED and releases one unit of slot capacity.",
+        "description": "Changes a PENDING_CONFIRMATION or CONFIRMED booking to CANCELLED and releases one unit of slot capacity. Cancellation is only allowed before the appointment starts (BR-07).",
         "operationId": "BookingsController_cancelMyBooking",
         "parameters": [
           {
@@ -9146,7 +9146,7 @@
             }
           },
           "409": {
-            "description": "Only PENDING_CONFIRMATION or CONFIRMED bookings can be cancelled, and slot capacity must be available to release.",
+            "description": "Only PENDING_CONFIRMATION or CONFIRMED bookings can be cancelled, only before the appointment starts, and slot capacity must be available to release.",
             "headers": {
               "X-Request-ID": {
                 "$ref": "#/components/headers/XRequestId"
