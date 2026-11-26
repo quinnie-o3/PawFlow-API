@@ -177,6 +177,24 @@ export function loadReleaseConfig(env: Env): ReleaseConfig {
       problems.push('PUSH_DELIVERY_MODE=firebase in staging sends real notifications; set STAGING_ALLOW_REAL_PUSH=true to confirm');
     }
     if (env.PORT?.trim() && !/^\d+$/.test(env.PORT.trim())) problems.push('PORT must be a number');
+
+    // P3-BE12: e-mailed reset/verification links fall back to http://localhost:3000
+    // when neither MAIL_LINK_BASE_URL nor FRONTEND_URL is set; with real SMTP that
+    // would send unusable (non-https, local) links. Only relevant when e-mail is on.
+    if (env.MAIL_TRANSPORT?.trim().toLowerCase() === 'smtp') {
+      const linkVar = env.MAIL_LINK_BASE_URL?.trim() ? 'MAIL_LINK_BASE_URL' : 'FRONTEND_URL';
+      const raw = env[linkVar]?.trim() ?? '';
+      let url: URL | null = null;
+      try {
+        url = raw ? new URL(raw) : null;
+      } catch {
+        url = null;
+      }
+      const host = url?.hostname.replace(/^\[|\]$/g, '').toLowerCase() ?? '';
+      if (!url || url.protocol !== 'https:' || LOOPBACK_HOSTS.has(host) || host.startsWith('127.') || url.username || url.password || url.search || url.hash) {
+        problems.push('MAIL_LINK_BASE_URL (or FRONTEND_URL) must be the https URL of the frontend when MAIL_TRANSPORT=smtp in a deployed environment');
+      }
+    }
   }
 
   if (problems.length > 0) {

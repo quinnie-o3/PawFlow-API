@@ -452,7 +452,10 @@ export class BookingsService {
     customerId: string,
     bookingId: string,
     dto?: CancelBookingDto,
+    now: Date = new Date(),
   ) {
+    const clock = captureSchedulingClock(now);
+
     return this.dataSource.transaction(async (manager) => {
       const bookingsRepository = manager.getRepository(Booking);
       const bookingLogsRepository =

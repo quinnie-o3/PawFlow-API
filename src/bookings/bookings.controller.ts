@@ -197,7 +197,7 @@ export class BookingsController {
   @ApiOperation({
     summary: 'Cancel one of my bookings',
     description:
-      'Changes a PENDING_CONFIRMATION or CONFIRMED booking to CANCELLED and releases one unit of slot capacity.',
+      'Changes a PENDING_CONFIRMATION or CONFIRMED booking to CANCELLED and releases one unit of slot capacity. Cancellation is only allowed before the appointment starts (BR-07).',
   })
   @ApiCreatedResponse({
     description:
@@ -213,7 +213,7 @@ export class BookingsController {
   })
   @ApiConflictResponse({
     description:
-      'Only PENDING_CONFIRMATION or CONFIRMED bookings can be cancelled, and slot capacity must be available to release.',
+      'Only PENDING_CONFIRMATION or CONFIRMED bookings can be cancelled, only before the appointment starts, and slot capacity must be available to release.',
   })
   async cancelMyBooking(
     @CurrentUser() user: AuthenticatedUser,

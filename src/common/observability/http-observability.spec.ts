@@ -163,6 +163,11 @@ describe('P3-BE09 HTTP correlation ID and structured logs', () => {
     app.setGlobalPrefix('api');
     app.useGlobalPipes(new ValidationPipe(GLOBAL_VALIDATION_PIPE_OPTIONS));
     await app.init();
+    // Listen once for the whole file. With a non-listening server, supertest binds it on the
+    // first request and closes the SHARED server when that request ends, resetting the other
+    // in-flight connections of a concurrent batch (CI: read ECONNRESET in the 60-request test).
+    // A server that already listens is never bound or closed by supertest; afterAll closes it.
+    await app.listen(0, '127.0.0.1');
 
     const jwt = moduleRef.get(JwtService);
     tokens = Object.fromEntries(

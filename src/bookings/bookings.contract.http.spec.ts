@@ -152,6 +152,9 @@ describe('Booking API response contracts (P2-08B)', () => {
     app = moduleRef.createNestApplication();
     app.useGlobalPipes(new ValidationPipe(GLOBAL_VALIDATION_PIPE_OPTIONS));
     await app.init();
+    // Listen once (see http-observability.spec.ts): supertest would otherwise bind the server on the
+    // first request and close it when that request ends, resetting concurrent in-flight requests.
+    await app.listen(0, '127.0.0.1');
     document = SwaggerModule.createDocument(app, new DocumentBuilder().build());
 
     const jwt = moduleRef.get(JwtService);

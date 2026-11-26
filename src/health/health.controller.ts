@@ -41,15 +41,15 @@ export class HealthController {
   @Get('live')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Liveness: the API process is running' })
-  @ApiOkResponse({ description: '`{ "status": "ok" }`' })
+  @ApiOkResponse({ description: '`{ "status": "ok" }`', schema: { type: 'object', properties: { status: { type: 'string', enum: ['ok'] } } } })
   live(): { status: 'ok' } {
     return { status: 'ok' };
   }
 
   @Get('ready')
   @ApiOperation({ summary: 'Readiness: database reachable and schema at this build\'s migration level' })
-  @ApiOkResponse({ description: '`{ "status": "ready", "checks": { "database": "up", "schema": "current" } }`' })
-  @ApiServiceUnavailableResponse({ description: '`{ "status": "unavailable", "checks": { ... } }` (database down/timeout or schema not current).' })
+  @ApiOkResponse({ description: '`{ "status": "ready", "checks": { "database": "up", "schema": "current" } }`', schema: { type: 'object', properties: { status: { type: 'string', enum: ['ready'] }, checks: { type: 'object', properties: { database: { type: 'string', enum: ['up', 'down', 'timeout'] }, schema: { type: 'string', enum: ['current', 'pending', 'ahead', 'unknown'] } } } } } })
+  @ApiServiceUnavailableResponse({ description: '`{ "status": "unavailable", "checks": { ... } }` (database down/timeout or schema not current).', schema: { type: 'object', properties: { status: { type: 'string', enum: ['unavailable'] }, checks: { type: 'object', properties: { database: { type: 'string', enum: ['up', 'down', 'timeout'] }, schema: { type: 'string', enum: ['current', 'pending', 'ahead', 'unknown'] } } } } } })
   async ready(@Res({ passthrough: true }) res: Response): Promise<{ status: 'ready' | 'unavailable'; checks: { database: DatabaseProbe; schema: SchemaStatus } }> {
     const database = await this.probeDatabase();
     const schema = this.schema.status;

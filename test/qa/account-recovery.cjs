@@ -672,7 +672,10 @@ async function main() {
         stub.mode = 'hang';
         const hung = await via('POST', '/auth/forgot-password', { body: { email: mail('smtp3') } });
         await sleep(500);
-        await smtpApp.stop(); // hard kill (TerminateProcess) while the SMTP exchange is in flight
+        // Hard kill while the SMTP exchange is in flight. Must be SIGKILL: the default SIGTERM is a graceful
+        // shutdown on Linux, which drains the mail queue, lets the hung send time out and revokes the link
+        // (correct behaviour, but not the crash this scenario documents). On Windows both are TerminateProcess.
+        await smtpApp.stop('SIGKILL');
         const afterKill = await resetRows(r3.body.user.id);
         check('crash after 202: the accepted request is durable (token committed and usable), only its e-mail is lost', hung.status === 202 && afterKill.length === 1 && afterKill[0].revoked_at === null, afterKill);
         stub.mode = 'accept';

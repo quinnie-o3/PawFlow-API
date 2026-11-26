@@ -307,6 +307,8 @@ async function main() {
 
     section('3. Crash recovery (real child process killed with SIGKILL)');
     const childRun = async (marker, waitFor) => {
+      // Start from an empty marker file: a rerun in the same QA_OUT_DIR must not count the previous run's sends.
+      fs.rmSync(marker, { force: true });
       const child = spawn(process.execPath, [__filename, '--child', NAME, JWT_SECRET, marker], { stdio: ['ignore', 'pipe', 'pipe'] });
       let out = '';
       child.stdout.on('data', (d) => (out += d));
@@ -441,7 +443,14 @@ async function main() {
       const crossInsert = await rejects(`insert into notification_push_sends(delivery_id, recipient_user_id, push_device_id, outcome, attempt, attempted_at) values ($1, $2, $3, 'ACCEPTED', 1, now())`, [jA.jid, A.id, dB]);
       evidence.accountSwitch = { jobA: (await jobRow(jA.jid)).cat, jobB: (await jobRow(jB.jid)).status, sendsToSharedInstallation: toShared.map((s) => (s.notificationId === jA.nid ? 'A' : 'B')), revokedSessionRegister: reuse.status, crossInsert };
       check("22. account switch: A's old job sends nothing to the installation now owned by B; B's job is delivered to it once; revoked session cannot register (401)", evidence.accountSwitch.jobA === 'NO_DESTINATIONS' && evidence.accountSwitch.jobB === 'DONE' && toShared.length === 1 && toShared[0].notificationId === jB.nid && reuse.status === 401, evidence.accountSwitch);
-      check("22. inbox isolation: A keeps its notification, B never sees it; a send row tying A's job to B's device is impossible (FK 23503)", JSON.stringify(aInbox.body).includes('QA push') && !JSON.stringify(bInbox.body.items ?? bInbox.body).includes(jA.nid) && crossInsert === '23503', { a: aInbox.status, crossInsert });
+      // Compare notification IDs exactly. A substring search for jA.nid (a short number such as "41")
+      // in B's inbox JSON also matched B's own IDs and ISO timestamps ("...T12:41:..."): intermittent false FAIL.
+      const ids = (res) => (Array.isArray(res.body?.items) ? res.body.items.map((n) => String(n.id)) : null);
+      const aIds = ids(aInbox);
+      const bIds = ids(bInbox);
+      const isolation = { a: aInbox.status, b: bInbox.status, aHasJobA: aIds?.includes(jA.nid) ?? null, bHasJobA: bIds?.includes(jA.nid) ?? null, bItems: bIds?.length ?? null, crossInsert };
+      check("22. inbox isolation: A keeps its notification, B never sees it; a send row tying A's job to B's device is impossible (FK 23503)",
+        aInbox.status === 200 && bInbox.status === 200 && isolation.aHasJobA === true && isolation.bHasJobA === false && crossInsert === '23503', isolation);
     }
     {
       await quiesce();
