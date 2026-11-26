@@ -35,6 +35,9 @@ import { JwtStrategy } from '../auth/strategies/jwt.strategy';
 import { GLOBAL_VALIDATION_PIPE_OPTIONS } from '../common/pipes/validation-pipe.options';
 import { BookingsController } from './bookings.controller';
 import { BookingsService } from './bookings.service';
+import { APP_GUARD } from '@nestjs/core';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
 
 const SECRET = 'p2-08b-http-spec-secret';
 const USERS: Record<string, { id: string; role: string; status: string }> = {
@@ -134,6 +137,9 @@ describe('Booking API response contracts (P2-08B)', () => {
       controllers: [BookingsController],
       providers: [
         JwtStrategy,
+        // Authentication is global in AuthModule (APP_GUARD); mirror it here.
+        { provide: APP_GUARD, useClass: JwtAuthGuard },
+        { provide: APP_GUARD, useClass: RolesGuard },
         { provide: ConfigService, useValue: { getOrThrow: () => SECRET } },
         {
           provide: getRepositoryToken(AuthSession),

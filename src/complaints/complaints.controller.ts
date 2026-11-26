@@ -4,7 +4,6 @@ import {
   Get,
   Param,
   Post,
-  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
@@ -21,8 +20,6 @@ import {
 
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
 import type { AuthenticatedUser } from '../auth/interfaces/authenticated-user.interface';
 import { ParseBigIntIdPipe } from '../common/pipes/parse-bigint-id.pipe';
 import { ComplaintsService } from './complaints.service';
@@ -30,7 +27,6 @@ import { CreateComplaintDto } from './dto/create-complaint.dto';
 
 @ApiTags('Complaints')
 @ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller()
 export class ComplaintsController {
   constructor(private readonly complaintsService: ComplaintsService) {}

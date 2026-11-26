@@ -6,6 +6,7 @@ import { DataSource } from 'typeorm';
 
 import { SkipApiRateLimit } from '../auth/rate-limit/api-rate-limit';
 import { SchemaStatusService, type SchemaStatus } from './schema-status.service';
+import { Public } from '../auth/decorators/public.decorator';
 
 export type DatabaseProbe = 'up' | 'down' | 'timeout';
 
@@ -26,6 +27,7 @@ export type DatabaseProbe = 'up' | 'down' | 'timeout';
  */
 @ApiTags('Health')
 @SkipApiRateLimit()
+@Public()
 @Controller('health')
 export class HealthController {
   private readonly logger = new Logger('Health');

@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
@@ -12,7 +12,6 @@ import {
 } from '@nestjs/swagger';
 
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { AuthenticatedUser } from '../auth/interfaces/authenticated-user.interface';
 import { ParseBigIntIdPipe } from '../common/pipes/parse-bigint-id.pipe';
 import { PUSH_DEVICE_SCHEMA, RegisterPushDeviceDto } from './dto/push-device.dto';
@@ -27,7 +26,6 @@ const UNAUTHORIZED = 'Access token missing, invalid or expired, its session was 
  */
 @ApiTags('Push devices')
 @ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard)
 @Controller('push-devices')
 export class PushDevicesController {
   constructor(private readonly devices: PushDevicesService) {}

@@ -3,7 +3,6 @@ import {
   Get,
   Param,
   Query,
-  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
@@ -17,15 +16,12 @@ import {
 } from '@nestjs/swagger';
 
 import { Roles } from '../auth/decorators/roles.decorator';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
 import { ParseBigIntIdPipe } from '../common/pipes/parse-bigint-id.pipe';
 import { AdminActivityLogService } from './admin-activity-log.service';
 import { AdminActivityLogQueryDto } from './dto/admin-activity-log-query.dto';
 
 @ApiTags('Admin - Activity Logs')
 @ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('ADMIN')
 @Controller('admin/activity-logs')
 export class AdminActivityLogsController {

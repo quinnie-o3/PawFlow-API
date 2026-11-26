@@ -5,13 +5,11 @@ import {
   UnauthorizedException,
   ValidationPipe,
 } from '@nestjs/common';
-import { GUARDS_METADATA, HTTP_CODE_METADATA, METHOD_METADATA, PATH_METADATA } from '@nestjs/common/constants';
+import { HTTP_CODE_METADATA, METHOD_METADATA, PATH_METADATA } from '@nestjs/common/constants';
 import { RequestMethod } from '@nestjs/common';
 import type { DataSource } from 'typeorm';
 
 import { ROLES_KEY } from '../auth/decorators/roles.decorator';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
 import type { AuthenticatedUser } from '../auth/interfaces/authenticated-user.interface';
 import { GLOBAL_VALIDATION_PIPE_OPTIONS } from '../common/pipes/validation-pipe.options';
 import { assertProviderCanRespondToReviews } from '../providers/provider-lifecycle.policy';
@@ -27,6 +25,7 @@ import {
   ProviderReviewsService,
 } from './provider-reviews.service';
 import { codePointLength, normalizeReviewResponseText } from './review-response-text';
+import { expectAuthenticated } from '../../test/helpers/auth-metadata';
 
 const pipe = new ValidationPipe(GLOBAL_VALIDATION_PIPE_OPTIONS);
 const body = (value: unknown) =>
@@ -108,9 +107,9 @@ const LIST_DEFAULTS = { page: 1, limit: 20, visibility: 'all', responded: 'all',
 
 describe('Provider feedback (P3-BE08-02)', () => {
   describe('routes and guards', () => {
-    it('mounts under /providers/me/reviews behind JWT + RolesGuard', () => {
+    it('mounts under /providers/me/reviews and requires authentication', () => {
       expect(Reflect.getMetadata(PATH_METADATA, ProviderReviewsController)).toBe('providers/me/reviews');
-      expect(Reflect.getMetadata(GUARDS_METADATA, ProviderReviewsController)).toEqual([JwtAuthGuard, RolesGuard]);
+      expectAuthenticated(ProviderReviewsController);
     });
 
     it('list: owner and staff only (D1)', () => {

@@ -51,9 +51,9 @@ import { VerifyEmailDto } from './dto/verify-email.dto';
 import { EmailVerificationService } from './email-verification.service';
 import { TURNSTILE_ACTIONS } from './bot-protection/turnstile.config';
 import { TurnstileService } from './bot-protection/turnstile.service';
-import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { AuthRateLimitGuard, RateLimit } from './rate-limit/auth-rate-limit.guard';
 import type { AuthenticatedUser } from './interfaces/authenticated-user.interface';
+import { Public } from './decorators/public.decorator';
 
 const AUTH_RESPONSE_DESCRIPTION =
   '`{ accessToken, tokenType: "Bearer", expiresIn, refreshToken, refreshTokenExpiresAt, user }`. ' +
@@ -92,6 +92,7 @@ export class AuthController {
   ) {}
 
   @Post('register')
+  @Public()
   @UseGuards(AuthRateLimitGuard)
   @RateLimit('register')
   @ApiOperation({
@@ -121,6 +122,7 @@ export class AuthController {
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
+  @Public()
   @UseGuards(AuthRateLimitGuard)
   @RateLimit('login')
   @ApiOperation({
@@ -149,6 +151,7 @@ export class AuthController {
   }
 
   @Post('refresh')
+  @Public()
   @UseGuards(AuthRateLimitGuard)
   @RateLimit('refresh')
   @ApiTooManyRequestsResponse({ description: RATE_LIMITED })
@@ -172,7 +175,6 @@ export class AuthController {
   }
 
   @Post('logout')
-  @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiBearerAuth('access-token')
   @ApiOperation({
@@ -187,7 +189,6 @@ export class AuthController {
   }
 
   @Post('logout-all')
-  @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiBearerAuth('access-token')
   @ApiOperation({
@@ -201,7 +202,6 @@ export class AuthController {
   }
 
   @Get('sessions')
-  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('access-token')
   @ApiOperation({
     summary: 'List my active sessions',
@@ -233,7 +233,6 @@ export class AuthController {
   }
 
   @Delete('sessions/:id')
-  @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiBearerAuth('access-token')
   @ApiOperation({
@@ -253,7 +252,6 @@ export class AuthController {
   }
 
   @Get('me')
-  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('access-token')
   @ApiOperation({
     summary: 'Get current authenticated user',
@@ -284,7 +282,7 @@ export class AuthController {
 
   @Post('change-password')
   // Rate limited per authenticated user (after JwtAuthGuard: guards run in order).
-  @UseGuards(JwtAuthGuard, AuthRateLimitGuard)
+  @UseGuards(AuthRateLimitGuard)
   @RateLimit('change-password')
   @ApiTooManyRequestsResponse({ description: RATE_LIMITED })
   @HttpCode(HttpStatus.NO_CONTENT)
@@ -314,6 +312,7 @@ export class AuthController {
 
   @Post('forgot-password')
   @HttpCode(HttpStatus.ACCEPTED)
+  @Public()
   @UseGuards(AuthRateLimitGuard)
   @RateLimit('forgot-password')
   @ApiOperation({
@@ -339,6 +338,7 @@ export class AuthController {
 
   @Post('reset-password')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @Public()
   @UseGuards(AuthRateLimitGuard)
   @RateLimit('reset-password')
   @ApiOperation({
@@ -364,6 +364,7 @@ export class AuthController {
   }
 
   @Post('verify-email')
+  @Public()
   @UseGuards(AuthRateLimitGuard)
   @RateLimit('verify-email')
   @ApiTooManyRequestsResponse({ description: RATE_LIMITED })
@@ -384,7 +385,7 @@ export class AuthController {
   }
 
   @Post('verify-email/resend')
-  @UseGuards(JwtAuthGuard, AuthRateLimitGuard)
+  @UseGuards(AuthRateLimitGuard)
   @RateLimit('verify-email-resend')
   @ApiTooManyRequestsResponse({ description: RATE_LIMITED })
   @HttpCode(HttpStatus.ACCEPTED)

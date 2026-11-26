@@ -2,12 +2,9 @@ import {
   ConflictException,
   NotFoundException,
 } from '@nestjs/common';
-import { GUARDS_METADATA } from '@nestjs/common/constants';
 import type { DataSource } from 'typeorm';
 
 import { ROLES_KEY } from '../auth/decorators/roles.decorator';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
 import { Booking } from '../bookings/entities/booking.entity';
 import { ComplaintsController } from './complaints.controller';
 import {
@@ -16,6 +13,7 @@ import {
   ComplaintsService,
 } from './complaints.service';
 import { Complaint } from './entities/complaint.entity';
+import { expectAuthenticated } from '../../test/helpers/auth-metadata';
 
 type BookingRow = Pick<Booking, 'id' | 'customerId' | 'status'>;
 
@@ -264,11 +262,8 @@ describe('ComplaintsService', () => {
   });
 
   describe('route protection', () => {
-    it('applies JwtAuthGuard and RolesGuard to every complaint route', () => {
-      expect(Reflect.getMetadata(GUARDS_METADATA, ComplaintsController)).toEqual([
-        JwtAuthGuard,
-        RolesGuard,
-      ]);
+    it('requires authentication on every complaint route', () => {
+      expectAuthenticated(ComplaintsController);
     });
 
     it('restricts every handler to CUSTOMER', () => {

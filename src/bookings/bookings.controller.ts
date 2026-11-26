@@ -5,7 +5,6 @@ import {
   Param,
   Post,
   Res,
-  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
@@ -24,8 +23,6 @@ import type { Response } from 'express';
 
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
 import type { AuthenticatedUser } from '../auth/interfaces/authenticated-user.interface';
 import { ParseBigIntIdPipe } from '../common/pipes/parse-bigint-id.pipe';
 import {
@@ -67,7 +64,6 @@ const PROVIDER_FORBIDDEN =
 @ApiTags('Bookings')
 @ApiBearerAuth('access-token')
 @ApiUnauthorizedResponse({ description: 'Authentication is required.' })
-@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('bookings')
 export class BookingsController {
   constructor(
