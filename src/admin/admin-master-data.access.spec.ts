@@ -1,10 +1,9 @@
 import { GUARDS_METADATA, PATH_METADATA } from '@nestjs/common/constants';
 
 import { ROLES_KEY } from '../auth/decorators/roles.decorator';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
 import { AdminPetTypesController } from './admin-pet-types.controller';
 import { AdminServiceCategoriesController } from './admin-service-categories.controller';
+import { expectAuthenticated } from '../../test/helpers/auth-metadata';
 
 // Regression guard: adding public discovery routes must not weaken the
 // ADMIN-only restrictions on master-data management.
@@ -20,11 +19,8 @@ describe.each([
     expect(Reflect.getMetadata(PATH_METADATA, controller)).toBe(path);
   });
 
-  it('applies JwtAuthGuard and RolesGuard to every route', () => {
-    expect(Reflect.getMetadata(GUARDS_METADATA, controller)).toEqual([
-      JwtAuthGuard,
-      RolesGuard,
-    ]);
+  it('requires authentication on every route (no @Public())', () => {
+    expectAuthenticated(controller);
   });
 
   it('requires the ADMIN role', () => {

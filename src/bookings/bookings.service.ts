@@ -464,6 +464,13 @@ export class BookingsService {
       const oldStatus = this.getCancellableStatus(booking);
       const slot = await this.findLockedSlot(manager, booking.slotId);
 
+      // Customers may cancel only before the appointment starts.
+      if (hasSlotStarted(slot, clock)) {
+        throw new ConflictException(
+          'Bookings can only be cancelled before the appointment starts',
+        );
+      }
+
       this.releaseReservedSlotCapacity(slot);
       booking.status = 'CANCELLED';
 

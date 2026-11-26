@@ -12,8 +12,6 @@ import {
 import type { Repository } from 'typeorm';
 
 import { ROLES_KEY } from '../auth/decorators/roles.decorator';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
 import { ParseBigIntIdPipe } from '../common/pipes/parse-bigint-id.pipe';
 import { getTodayDateString } from '../common/utils/calendar-date.util';
 import { parseTimeOfDayToSeconds } from '../common/utils/time-of-day.util';
@@ -35,6 +33,7 @@ import {
   slotFitsWorkingHours,
   type WorkingInterval,
 } from './slot-eligibility';
+import { expectAuthenticated } from '../../test/helpers/auth-metadata';
 
 type Row = Record<string, unknown>;
 
@@ -536,11 +535,8 @@ describe('Public availability (C-06)', () => {
   });
 
   describe('provider-owned availability CRUD stays protected', () => {
-    it('keeps JwtAuthGuard and RolesGuard on AvailabilityController', () => {
-      expect(Reflect.getMetadata(GUARDS_METADATA, AvailabilityController)).toEqual([
-        JwtAuthGuard,
-        RolesGuard,
-      ]);
+    it('keeps every AvailabilityController route authenticated', () => {
+      expectAuthenticated(AvailabilityController);
     });
 
     it('requires PROVIDER_OWNER on every management handler', () => {

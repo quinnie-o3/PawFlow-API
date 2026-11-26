@@ -1,16 +1,14 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { GUARDS_METADATA } from '@nestjs/common/constants';
 import type { DataSource } from 'typeorm';
 
 import { AdminReviewsController } from '../admin/admin-reviews.controller';
 import { ROLES_KEY } from '../auth/decorators/roles.decorator';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
 import { ParseBigIntIdPipe } from '../common/pipes/parse-bigint-id.pipe';
 import { Provider } from '../providers/entities/provider.entity';
 import { Review } from './entities/review.entity';
 import { ReviewQueriesController } from './review-queries.controller';
 import { ReviewsService } from './reviews.service';
+import { expectAuthenticated, isPublicRoute } from '../../test/helpers/auth-metadata';
 
 type ReviewRow = {
   id: string;
@@ -219,32 +217,18 @@ describe('ReviewsService public and customer queries', () => {
 
   describe('route protection (unchanged)', () => {
     it('keeps public provider reviews unauthenticated', () => {
-      expect(
-        Reflect.getMetadata(GUARDS_METADATA, ReviewQueriesController),
-      ).toBeUndefined();
-      expect(
-        Reflect.getMetadata(
-          GUARDS_METADATA,
-          ReviewQueriesController.prototype.getPublicProviderReviews,
-        ),
-      ).toBeUndefined();
+      expect(isPublicRoute(ReviewQueriesController, 'getPublicProviderReviews')).toBe(true);
     });
 
     it('keeps /reviews/mine behind JWT + CUSTOMER', () => {
       const handler = ReviewQueriesController.prototype.getMyReviews;
 
-      expect(Reflect.getMetadata(GUARDS_METADATA, handler)).toEqual([
-        JwtAuthGuard,
-        RolesGuard,
-      ]);
+      expectAuthenticated(ReviewQueriesController, 'getMyReviews');
       expect(Reflect.getMetadata(ROLES_KEY, handler)).toEqual(['CUSTOMER']);
     });
 
     it('keeps admin review moderation behind JWT + ADMIN', () => {
-      expect(Reflect.getMetadata(GUARDS_METADATA, AdminReviewsController)).toEqual([
-        JwtAuthGuard,
-        RolesGuard,
-      ]);
+      expectAuthenticated(AdminReviewsController);
       expect(Reflect.getMetadata(ROLES_KEY, AdminReviewsController)).toEqual([
         'ADMIN',
       ]);

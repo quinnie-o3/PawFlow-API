@@ -55,7 +55,11 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     AuthRateLimitGuard,
     // P3-BE11 API-wide rate limits: per-IP guard before every controller guard,
     // per-user interceptor after authentication (same PostgreSQL counters).
+    // Global guards run in registration order: per-IP rate limit first, then
+    // authentication (secure by default; opt out with @Public()), then @Roles.
     { provide: APP_GUARD, useClass: ApiRateLimitGuard },
+    { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_INTERCEPTOR, useClass: ApiUserRateLimitInterceptor },
     JwtStrategy,
     JwtAuthGuard,

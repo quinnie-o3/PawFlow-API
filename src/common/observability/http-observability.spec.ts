@@ -11,6 +11,7 @@ import {
   ValidationPipe,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
 import { JwtModule, JwtService } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { Test } from '@nestjs/testing';
@@ -24,7 +25,10 @@ import {
 } from '../../../test/helpers/auth-session-fixture';
 import { AdminActivityLogService } from '../../admin/admin-activity-log.service';
 import { AdminActivityLogsController } from '../../admin/admin-activity-logs.controller';
+import { Public } from '../../auth/decorators/public.decorator';
 import { AuthSession } from '../../auth/entities/auth-session.entity';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../../auth/guards/roles.guard';
 import { JwtStrategy } from '../../auth/strategies/jwt.strategy';
 import { GLOBAL_VALIDATION_PIPE_OPTIONS } from '../pipes/validation-pipe.options';
 import { applyHttpObservability } from './http-observability';
@@ -80,6 +84,7 @@ class ProbeService {
   }
 }
 
+@Public()
 @Controller('probe')
 class ProbeController {
   constructor(private readonly service: ProbeService) {}
@@ -107,6 +112,7 @@ class ProbeController {
 }
 
 /** Stand-in for the API root (AppController) that readiness probes hit. */
+@Public()
 @Controller()
 class RootController {
   @Get()
@@ -141,6 +147,9 @@ describe('P3-BE09 HTTP correlation ID and structured logs', () => {
       providers: [
         ProbeService,
         JwtStrategy,
+        // Authentication is global in AuthModule (APP_GUARD); mirror it here.
+        { provide: APP_GUARD, useClass: JwtAuthGuard },
+        { provide: APP_GUARD, useClass: RolesGuard },
         { provide: ConfigService, useValue: { getOrThrow: () => SECRET } },
         { provide: getRepositoryToken(AuthSession), useValue: activeSessionRepository(USERS) },
         { provide: AdminActivityLogService, useValue: activityLogs },

@@ -16,6 +16,7 @@ import { paginatedSchema } from '../common/dto/paginated-schema';
 import { ParseBigIntIdPipe } from '../common/pipes/parse-bigint-id.pipe';
 import { AvailabilityService } from './availability.service';
 import { PublicAvailabilitySearchQueryDto } from './dto/public-availability-search-query.dto';
+import { Public } from '../auth/decorators/public.decorator';
 
 const PUBLIC_SLOT_SCHEMA = {
   type: 'object',
@@ -77,6 +78,7 @@ const PUBLIC_SLOT_SCHEMA = {
 };
 
 @ApiTags('Public Availability')
+@Public()
 @Controller('availability/public')
 export class PublicAvailabilityController {
   constructor(

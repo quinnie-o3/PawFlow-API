@@ -1,8 +1,7 @@
-import { Body, Controller, Get, Patch, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Patch } from '@nestjs/common';
 import { ApiBadRequestResponse, ApiBearerAuth, ApiBody, ApiOkResponse, ApiOperation, ApiTags, ApiUnauthorizedResponse } from '@nestjs/swagger';
 
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { AuthenticatedUser } from '../auth/interfaces/authenticated-user.interface';
 import { NOTIFICATION_PREFERENCES_SCHEMA, type NotificationPreferencesView, UpdateNotificationPreferencesDto } from './dto/notification-preferences.dto';
 import { type NotificationPreferenceState, NotificationPreferencesService } from './notification-preferences.service';
@@ -16,7 +15,6 @@ const UNAUTHORIZED = 'Access token is missing, invalid, expired or its session w
  */
 @ApiTags('Notification preferences')
 @ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard)
 @Controller('notification-preferences')
 export class NotificationPreferencesController {
   constructor(private readonly preferences: NotificationPreferencesService) {}

@@ -14,6 +14,7 @@ import {
   PublicProviderSearchQueryDto,
 } from './dto/public-provider-search-query.dto';
 import { PublicProvidersService } from './public-providers.service';
+import { Public } from '../auth/decorators/public.decorator';
 
 const PUBLIC_PROVIDER_SEARCH_ITEM_SCHEMA = {
   type: 'object',
@@ -69,6 +70,7 @@ const PUBLIC_PROVIDER_SEARCH_ITEM_SCHEMA = {
 };
 
 @ApiTags('Public Providers')
+@Public()
 @Controller('providers/public')
 export class PublicProvidersController {
   constructor(

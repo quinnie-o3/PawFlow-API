@@ -8,7 +8,6 @@ import {
   Param,
   Patch,
   Post,
-  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
@@ -26,8 +25,6 @@ import {
 
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
 import type { AuthenticatedUser } from '../auth/interfaces/authenticated-user.interface';
 import { ParseBigIntIdPipe } from '../common/pipes/parse-bigint-id.pipe';
 import { CreateServiceDto } from './dto/create-service.dto';
@@ -36,7 +33,6 @@ import { ServicesService } from './services.service';
 
 @ApiTags('Services')
 @ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('services')
 export class ServicesController {
   constructor(

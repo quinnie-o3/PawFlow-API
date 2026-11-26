@@ -12,8 +12,6 @@ import {
 import type { Repository } from 'typeorm';
 
 import { ROLES_KEY } from '../auth/decorators/roles.decorator';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
 import { ParseBigIntIdPipe } from '../common/pipes/parse-bigint-id.pipe';
 import { Provider } from '../providers/entities/provider.entity';
 import { ServiceCategory } from './entities/service-category.entity';
@@ -22,6 +20,7 @@ import { PublicServicesController } from './public-services.controller';
 import { ServicesController } from './services.controller';
 import { ServicesModule } from './services.module';
 import { ServicesService } from './services.service';
+import { expectAuthenticated } from '../../test/helpers/auth-metadata';
 
 type Row = Record<string, unknown>;
 
@@ -357,11 +356,8 @@ describe('Public services (F-10)', () => {
   });
 
   describe('provider-owned service CRUD stays protected', () => {
-    it('keeps JwtAuthGuard and RolesGuard on ServicesController', () => {
-      expect(Reflect.getMetadata(GUARDS_METADATA, ServicesController)).toEqual([
-        JwtAuthGuard,
-        RolesGuard,
-      ]);
+    it('keeps every ServicesController route authenticated', () => {
+      expectAuthenticated(ServicesController);
     });
 
     it('requires PROVIDER_OWNER on every management handler', () => {

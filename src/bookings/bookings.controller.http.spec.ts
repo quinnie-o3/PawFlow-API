@@ -26,6 +26,9 @@ import { GLOBAL_VALIDATION_PIPE_OPTIONS } from '../common/pipes/validation-pipe.
 import { IDEMPOTENCY_KEY_FORMAT_MESSAGE } from './booking-idempotency';
 import { BookingsController } from './bookings.controller';
 import { BookingsService } from './bookings.service';
+import { APP_GUARD } from '@nestjs/core';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
 
 const SECRET = 'p2-07-http-spec-secret';
 const KEY = '3f0c8a52-6c1e-4f5b-9a7e-2d4b8c1e9f00';
@@ -60,6 +63,9 @@ describe('POST /bookings Idempotency-Key HTTP contract (P2-07)', () => {
       controllers: [BookingsController],
       providers: [
         JwtStrategy,
+        // Authentication is global in AuthModule (APP_GUARD); mirror it here.
+        { provide: APP_GUARD, useClass: JwtAuthGuard },
+        { provide: APP_GUARD, useClass: RolesGuard },
         { provide: ConfigService, useValue: { getOrThrow: () => SECRET } },
         {
           provide: getRepositoryToken(AuthSession),

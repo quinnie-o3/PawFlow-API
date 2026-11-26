@@ -13,6 +13,8 @@ const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const DIST = path.join(ROOT, 'dist');
+const GLOBAL_AUTH_GUARDS = ['JwtAuthGuard', 'RolesGuard'];
+const IS_PUBLIC_KEY = 'isPublic';
 const METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'ALL', 'OPTIONS', 'HEAD'];
 
 function controllerFiles(dir) {
@@ -43,10 +45,12 @@ function routeInventory() {
         const method = Reflect.getMetadata('method', handler);
         if (method === undefined) continue;
         const roles = Reflect.getMetadata('roles', handler) ?? classRoles ?? null;
+        const isPublic = (Reflect.getMetadata(IS_PUBLIC_KEY, handler) ?? Reflect.getMetadata(IS_PUBLIC_KEY, exported)) === true;
+        const localGuards = [...classGuards, ...(Reflect.getMetadata('__guards__', handler) ?? []).map((g) => g.name)];
         routes.push({
           method: METHODS[method],
           path: join(base, Reflect.getMetadata('path', handler)),
-          guards: [...classGuards, ...(Reflect.getMetadata('__guards__', handler) ?? []).map((g) => g.name)],
+          guards: [...(isPublic ? [] : GLOBAL_AUTH_GUARDS), ...localGuards],
           roles: roles && roles.length > 0 ? [...roles] : null,
           controller: exported.name,
           handler: name,

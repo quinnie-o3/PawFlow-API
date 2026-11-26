@@ -1,12 +1,10 @@
 import { ValidationPipe } from '@nestjs/common';
-import { GUARDS_METADATA, METHOD_METADATA, PATH_METADATA } from '@nestjs/common/constants';
+import { METHOD_METADATA, PATH_METADATA } from '@nestjs/common/constants';
 import type { QueryRunner } from 'typeorm';
 
 import { AdminReviewsController } from '../admin/admin-reviews.controller';
 import { AdminService } from '../admin/admin.service';
 import { ROLES_KEY } from '../auth/decorators/roles.decorator';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
 import { GLOBAL_VALIDATION_PIPE_OPTIONS } from '../common/pipes/validation-pipe.options';
 import { AddReviewResponseConstraints1797500000000 } from '../database/migrations/1797500000000-AddReviewResponseConstraints';
 import { CreateReviewResponseDto } from './dto/create-review-response.dto';
@@ -17,6 +15,7 @@ import {
   REVIEW_RESPONSE_TRIM_CODE_POINTS,
   codePointLength,
 } from './review-response-text';
+import { expectAuthenticated } from '../../test/helpers/auth-metadata';
 
 const pipe = new ValidationPipe(GLOBAL_VALIDATION_PIPE_OPTIONS);
 const body = (value: unknown) =>
@@ -139,7 +138,7 @@ describe('Review moderation security (P3-BE08-03)', () => {
 
   describe('moderation stays admin-only', () => {
     it('admin review routes remain JWT + ADMIN', () => {
-      expect(Reflect.getMetadata(GUARDS_METADATA, AdminReviewsController)).toEqual([JwtAuthGuard, RolesGuard]);
+      expectAuthenticated(AdminReviewsController);
       expect(Reflect.getMetadata(ROLES_KEY, AdminReviewsController)).toEqual(['ADMIN']);
     });
 

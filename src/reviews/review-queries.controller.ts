@@ -2,7 +2,6 @@ import {
   Controller,
   Get,
   Param,
-  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
@@ -17,11 +16,10 @@ import {
 
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
 import type { AuthenticatedUser } from '../auth/interfaces/authenticated-user.interface';
 import { ParseBigIntIdPipe } from '../common/pipes/parse-bigint-id.pipe';
 import { ReviewsService } from './reviews.service';
+import { Public } from '../auth/decorators/public.decorator';
 
 @ApiTags('Reviews')
 @Controller('reviews')
@@ -31,7 +29,6 @@ export class ReviewQueriesController {
   ) {}
 
   @Get('mine')
-  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('CUSTOMER')
   @ApiBearerAuth('access-token')
   @ApiOperation({
@@ -55,6 +52,7 @@ export class ReviewQueriesController {
   }
 
   @Get('provider/:providerId')
+  @Public()
   @ApiOperation({
     summary: 'Get public reviews for a provider',
     description:

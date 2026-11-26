@@ -2,6 +2,7 @@ import { Controller, Get } from '@nestjs/common';
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { ServicesService } from './services.service';
+import { Public } from '../auth/decorators/public.decorator';
 
 /**
  * Public, read-only discovery of service categories.
@@ -10,6 +11,7 @@ import { ServicesService } from './services.service';
  * keeps its ADMIN-only guards; this controller exposes no mutations.
  */
 @ApiTags('Service Categories')
+@Public()
 @Controller('service-categories')
 export class ServiceCategoriesController {
   constructor(private readonly servicesService: ServicesService) {}

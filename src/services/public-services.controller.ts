@@ -19,6 +19,7 @@ import {
   PublicServiceSearchQueryDto,
 } from './dto/public-service-search-query.dto';
 import { ServicesService } from './services.service';
+import { Public } from '../auth/decorators/public.decorator';
 
 const PUBLIC_SERVICE_SCHEMA = {
   type: 'object',
@@ -70,6 +71,7 @@ const PUBLIC_SERVICE_SCHEMA = {
 };
 
 @ApiTags('Public Services')
+@Public()
 @Controller('services/public')
 export class PublicServicesController {
   constructor(
