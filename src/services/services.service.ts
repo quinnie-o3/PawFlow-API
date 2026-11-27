@@ -6,6 +6,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
 
+import { OwnershipService } from '../auth/authorization/ownership.service';
 import { AvailabilitySlot } from '../availability/entities/availability-slot.entity';
 import {
   captureSchedulingClock,
@@ -18,7 +19,6 @@ import {
   tokenizeSearchKeyword,
   toPageOffset,
 } from '../common/utils/public-search.util';
-import { Provider } from '../providers/entities/provider.entity';
 import { assertProviderCanManageResources } from '../providers/provider-lifecycle.policy';
 import { CreateServiceDto } from './dto/create-service.dto';
 import {
@@ -123,8 +123,7 @@ export class ServicesService {
     @InjectRepository(ServiceCategory)
     private readonly serviceCategoriesRepository: Repository<ServiceCategory>,
 
-    @InjectRepository(Provider)
-    private readonly providersRepository: Repository<Provider>,
+    private readonly ownershipService: OwnershipService,
   ) {}
 
   async createMyService(
@@ -132,7 +131,7 @@ export class ServicesService {
     dto: CreateServiceDto,
   ) {
     const provider =
-      await this.getProviderByOwner(ownerUserId);
+      await this.ownershipService.getOwnedProvider(ownerUserId);
 
     assertProviderCanManageResources(provider);
 
@@ -174,7 +173,7 @@ export class ServicesService {
 
   async getMyServices(ownerUserId: string) {
     const provider =
-      await this.getProviderByOwner(ownerUserId);
+      await this.ownershipService.getOwnedProvider(ownerUserId);
 
     return this.servicesRepository.find({
       where: {
@@ -194,7 +193,7 @@ export class ServicesService {
     serviceId: string,
   ) {
     const provider =
-      await this.getProviderByOwner(ownerUserId);
+      await this.ownershipService.getOwnedProvider(ownerUserId);
 
     // Scoped to the caller's provider: another provider's service is
     // indistinguishable from a missing one (C-01).
@@ -225,7 +224,7 @@ export class ServicesService {
     now: Date = new Date(),
   ) {
     const provider =
-      await this.getProviderByOwner(ownerUserId);
+      await this.ownershipService.getOwnedProvider(ownerUserId);
 
     assertProviderCanManageResources(provider);
 
@@ -338,7 +337,7 @@ export class ServicesService {
     serviceId: string,
   ): Promise<void> {
     const provider =
-      await this.getProviderByOwner(ownerUserId);
+      await this.ownershipService.getOwnedProvider(ownerUserId);
 
     assertProviderCanManageResources(provider);
 
@@ -361,24 +360,6 @@ export class ServicesService {
     await this.servicesRepository.save(service);
   }
 
-  private async getProviderByOwner(
-    ownerUserId: string,
-  ): Promise<Provider> {
-    const provider =
-      await this.providersRepository.findOne({
-        where: {
-          ownerId: ownerUserId,
-        },
-      });
-
-    if (!provider) {
-      throw new NotFoundException(
-        'Provider profile not found',
-      );
-    }
-
-    return provider;
-  }
 
   private async assertActiveCategory(
     categoryId: string,

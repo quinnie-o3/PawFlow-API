@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import type { Repository } from 'typeorm';
 
+import { createOwnershipService } from '../../test/helpers/ownership-service';
 import { ProviderWorkingHour } from '../providers/entities/provider-working-hour.entity';
 import { Provider } from '../providers/entities/provider.entity';
 import { Service } from '../services/entities/service.entity';
@@ -181,9 +182,9 @@ describe('AvailabilityService', () => {
 
     service = new AvailabilityService(
       slotsRepository as unknown as Repository<AvailabilitySlot>,
-      {
-        findOne: jest.fn().mockResolvedValue(provider),
-      } as unknown as Repository<Provider>,
+      createOwnershipService({
+        provider: { findOne: jest.fn().mockResolvedValue(provider) },
+      }),
       {
         findOne: jest.fn().mockResolvedValue(activeService),
       } as unknown as Repository<Service>,

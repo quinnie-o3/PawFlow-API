@@ -6,12 +6,12 @@ import {
 } from '@nestjs/common/constants';
 import type { DataSource, Repository } from 'typeorm';
 
+import { createOwnershipService } from '../../test/helpers/ownership-service';
 import {
   captureQueries,
   type CapturedQuery,
   createOfflineDataSource,
 } from '../../test/helpers/offline-query-capture';
-import { Provider } from '../providers/entities/provider.entity';
 import {
   PUBLIC_SERVICE_SORTS,
   type PublicServiceSearchQueryDto,
@@ -86,7 +86,7 @@ describe('ServicesService.searchPublicServices', () => {
     const service = new ServicesService(
       dataSource.getRepository(Service),
       {} as Repository<ServiceCategory>,
-      {} as Repository<Provider>,
+      createOwnershipService(),
     );
 
     return service.searchPublicServices(searchQuery(overrides));

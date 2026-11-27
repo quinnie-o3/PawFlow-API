@@ -7,8 +7,8 @@ import {
 } from '@nestjs/common/constants';
 import type { Repository } from 'typeorm';
 
+import { createOwnershipService } from '../../test/helpers/ownership-service';
 import { createFakeFindRepository } from '../../test/helpers/fake-find-repository';
-import { Provider } from '../providers/entities/provider.entity';
 import { ServiceCategory } from './entities/service-category.entity';
 import { Service } from './entities/service.entity';
 import { ServiceCategoriesController } from './service-categories.controller';
@@ -19,7 +19,7 @@ function createController(rows: Array<Record<string, unknown>>) {
   const servicesService = new ServicesService(
     {} as Repository<Service>,
     repository as unknown as Repository<ServiceCategory>,
-    {} as Repository<Provider>,
+    createOwnershipService(),
   );
 
   return {

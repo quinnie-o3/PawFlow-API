@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common/constants';
 import type { Repository } from 'typeorm';
 
+import { createOwnershipService } from '../../test/helpers/ownership-service';
 import { ROLES_KEY } from '../auth/decorators/roles.decorator';
 import { ParseBigIntIdPipe } from '../common/pipes/parse-bigint-id.pipe';
 import { getTodayDateString } from '../common/utils/calendar-date.util';
@@ -188,7 +189,7 @@ function createController(rows: Row[]) {
     {
       createQueryBuilder: jest.fn(() => createFakeQueryBuilder(rows)),
     } as unknown as Repository<AvailabilitySlot>,
-    {} as Repository<Provider>,
+    createOwnershipService(),
     {} as Repository<Service>,
   );
 

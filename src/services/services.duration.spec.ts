@@ -9,6 +9,7 @@ import {
   captureQueries,
   createOfflineDataSource,
 } from '../../test/helpers/offline-query-capture';
+import { createOwnershipService } from '../../test/helpers/ownership-service';
 import type { Provider } from '../providers/entities/provider.entity';
 import type { ServiceCategory } from './entities/service-category.entity';
 import { Service } from './entities/service.entity';
@@ -91,9 +92,9 @@ describe('ServicesService.updateMyService duration (P2-08A)', () => {
       {
         findOne: () => Promise.resolve({ id: '2', status: 'ACTIVE' }),
       } as unknown as Repository<ServiceCategory>,
-      {
-        findOne: () => Promise.resolve(provider),
-      } as unknown as Repository<Provider>,
+      createOwnershipService({
+        provider: { findOne: () => Promise.resolve(provider) },
+      }),
     );
 
     return services.updateMyService('10', '5', dto, NOW);

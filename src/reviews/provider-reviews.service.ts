@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
 
+import { OwnershipService } from '../auth/authorization/ownership.service';
 import type { AuthenticatedUser } from '../auth/interfaces/authenticated-user.interface';
 import {
   buildPaginationMeta,
@@ -30,8 +31,6 @@ import {
 } from './provider-review-views';
 
 export const REVIEW_NOT_FOUND = 'Review not found';
-export const PROVIDER_PROFILE_NOT_FOUND = 'Provider profile not found';
-export const STAFF_ASSOCIATION_REQUIRED = 'Active provider staff association is required';
 export const REVIEW_HIDDEN_CONFLICT = 'Hidden reviews cannot be responded to';
 export const REVIEW_ALREADY_RESPONDED = 'Review already has a response';
 
@@ -77,13 +76,16 @@ const ORDER_BY: Record<ProviderReviewSort, string> = {
 export class ProviderReviewsService {
   private readonly logger = new Logger(ProviderReviewsService.name);
 
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly ownershipService: OwnershipService,
+  ) {}
 
   async list(
     user: AuthenticatedUser,
     query: ProviderReviewListQuery,
   ): Promise<PaginatedResult<ProviderReviewView, ProviderReviewListEcho>> {
-    const providerId = await this.resolveReadableProviderId(this.dataSource.manager, user);
+    const providerId = await this.ownershipService.getManagedProviderId(user);
     const echo = (maxId: string | null): ProviderReviewListEcho => ({
       rating: query.rating ?? null,
       visibility: query.visibility,
@@ -165,10 +167,7 @@ export class ProviderReviewsService {
   ): Promise<ProviderReviewView> {
     return this.dataSource.transaction(async (manager) => {
       // 1. Policy before any resource lookup (provider lifecycle matrix).
-      const provider = await this.findOwnedProvider(manager, user.id);
-      if (!provider) {
-        throw new NotFoundException(PROVIDER_PROFILE_NOT_FOUND);
-      }
+      const provider = await this.ownershipService.getOwnedProvider(user.id, manager);
       assertProviderCanRespondToReviews(provider);
 
       // 2. Lock the review, scoped to the caller's provider. A review of
@@ -227,45 +226,6 @@ export class ProviderReviewsService {
     });
   }
 
-  /** Owner: the provider they own (404 if none). Active staff: their provider (403 otherwise). */
-  private async resolveReadableProviderId(
-    manager: EntityManager,
-    user: AuthenticatedUser,
-  ): Promise<string> {
-    if (user.role === 'PROVIDER_OWNER') {
-      const provider = await this.findOwnedProvider(manager, user.id);
-      if (!provider) {
-        throw new NotFoundException(PROVIDER_PROFILE_NOT_FOUND);
-      }
-      return provider.id;
-    }
-
-    if (user.role === 'PROVIDER_STAFF') {
-      const [staff] = (await manager.query(
-        `SELECT provider_id::text AS provider_id FROM provider_staff WHERE user_id = $1 AND status = 'ACTIVE'`,
-        [user.id],
-      )) as { provider_id: string }[];
-      if (!staff) {
-        throw new ForbiddenException(STAFF_ASSOCIATION_REQUIRED);
-      }
-      return staff.provider_id;
-    }
-
-    // Unreachable behind RolesGuard; kept so the service is safe on its own.
-    throw new ForbiddenException('You do not have permission to access provider reviews');
-  }
-
-  private async findOwnedProvider(
-    manager: EntityManager,
-    userId: string,
-  ): Promise<Pick<Provider, 'id' | 'approvalStatus'> | undefined> {
-    const [row] = (await manager.query(
-      `SELECT id::text AS id, approval_status FROM providers WHERE owner_id = $1`,
-      [userId],
-    )) as { id: string; approval_status: Provider['approvalStatus'] }[];
-
-    return row ? { id: row.id, approvalStatus: row.approval_status } : undefined;
-  }
 
   /**
    * The JWT guard checked the account and session at the start of the

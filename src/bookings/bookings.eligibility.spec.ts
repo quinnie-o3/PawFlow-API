@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import type { DataSource } from 'typeorm';
 
+import { OwnershipService } from '../auth/authorization/ownership.service';
 import { AvailabilitySlot } from '../availability/entities/availability-slot.entity';
 import { Pet } from '../pets/entities/pet.entity';
 import { ProviderWorkingHour } from '../providers/entities/provider-working-hour.entity';
@@ -127,7 +128,11 @@ describe('BookingsService.createBooking eligibility (P2-06B)', () => {
         work({ getRepository: (entity: unknown) => repositories.get(entity) }),
     };
 
-    bookings = new BookingsService(dataSource as unknown as DataSource, { record: jest.fn().mockResolvedValue(undefined) } as unknown as BookingEventsService);
+    bookings = new BookingsService(
+      dataSource as unknown as DataSource,
+      { record: jest.fn().mockResolvedValue(undefined) } as unknown as BookingEventsService,
+      new OwnershipService(dataSource as unknown as DataSource),
+    );
   });
 
   const book = () =>

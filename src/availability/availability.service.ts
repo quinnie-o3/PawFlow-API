@@ -7,6 +7,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
 
+import { OwnershipService } from '../auth/authorization/ownership.service';
 import {
   buildPaginationMeta,
   toPageOffset,
@@ -44,8 +45,7 @@ export class AvailabilityService {
     @InjectRepository(AvailabilitySlot)
     private readonly availabilitySlotsRepository: Repository<AvailabilitySlot>,
 
-    @InjectRepository(Provider)
-    private readonly providersRepository: Repository<Provider>,
+    private readonly ownershipService: OwnershipService,
 
     @InjectRepository(Service)
     private readonly servicesRepository: Repository<Service>,
@@ -58,7 +58,7 @@ export class AvailabilityService {
   ) {
     const clock = captureSchedulingClock(now);
     const provider =
-      await this.getProviderByOwner(ownerUserId);
+      await this.ownershipService.getOwnedProvider(ownerUserId);
 
     assertProviderCanManageResources(provider);
 
@@ -119,7 +119,7 @@ export class AvailabilityService {
 
   async getMySlots(ownerUserId: string) {
     const provider =
-      await this.getProviderByOwner(ownerUserId);
+      await this.ownershipService.getOwnedProvider(ownerUserId);
 
     return this.availabilitySlotsRepository.find({
       where: {
@@ -140,7 +140,7 @@ export class AvailabilityService {
     slotId: string,
   ) {
     const provider =
-      await this.getProviderByOwner(ownerUserId);
+      await this.ownershipService.getOwnedProvider(ownerUserId);
 
     // Scoped to the caller's provider: another provider's slot is
     // indistinguishable from a missing one (C-01).
@@ -172,7 +172,7 @@ export class AvailabilityService {
   ) {
     const clock = captureSchedulingClock(now);
     const provider =
-      await this.getProviderByOwner(ownerUserId);
+      await this.ownershipService.getOwnedProvider(ownerUserId);
 
     assertProviderCanManageResources(provider);
 
@@ -353,7 +353,7 @@ export class AvailabilityService {
     slotId: string,
   ): Promise<void> {
     const provider =
-      await this.getProviderByOwner(ownerUserId);
+      await this.ownershipService.getOwnedProvider(ownerUserId);
 
     assertProviderCanManageResources(provider);
 
@@ -467,24 +467,6 @@ export class AvailabilityService {
     return slot;
   }
 
-  private async getProviderByOwner(
-    ownerUserId: string,
-  ): Promise<Provider> {
-    const provider =
-      await this.providersRepository.findOne({
-        where: {
-          ownerId: ownerUserId,
-        },
-      });
-
-    if (!provider) {
-      throw new NotFoundException(
-        'Provider profile not found',
-      );
-    }
-
-    return provider;
-  }
 
   private async assertOwnedActiveService(
     providerId: string,

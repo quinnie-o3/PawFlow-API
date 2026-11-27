@@ -1,12 +1,12 @@
 import {
   BadRequestException,
   ConflictException,
-  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { DataSource, EntityManager, type FindOptionsRelations } from 'typeorm';
 
+import { OwnershipService } from '../auth/authorization/ownership.service';
 import type { AuthenticatedUser } from '../auth/interfaces/authenticated-user.interface';
 import { AvailabilitySlot } from '../availability/entities/availability-slot.entity';
 import {
@@ -20,7 +20,6 @@ import {
 import { Pet } from '../pets/entities/pet.entity';
 import { ProviderWorkingHour } from '../providers/entities/provider-working-hour.entity';
 import { Provider } from '../providers/entities/provider.entity';
-import { ProviderStaff } from '../providers/entities/provider-staff.entity';
 import { assertProviderCanConfirmBookings } from '../providers/provider-lifecycle.policy';
 import { Service } from '../services/entities/service.entity';
 import { fingerprintCreateBookingRequest } from './booking-idempotency';
@@ -55,6 +54,7 @@ export class BookingsService {
     // transition, written with the caller's manager inside the transition's
     // transaction, right after its status-log row.
     private readonly bookingEvents: BookingEventsService,
+    private readonly ownershipService: OwnershipService,
   ) {}
 
   async createBooking(
@@ -380,7 +380,7 @@ export class BookingsService {
   }
 
   async getProviderBookings(user: AuthenticatedUser) {
-    const providerId = await this.resolveManagedProviderId(user);
+    const providerId = await this.ownershipService.getManagedProviderId(user);
 
     return this.createProviderBookingQuery()
       .where('booking.providerId = :providerId', { providerId })
@@ -392,7 +392,7 @@ export class BookingsService {
     user: AuthenticatedUser,
     bookingId: string,
   ) {
-    const providerId = await this.resolveManagedProviderId(user);
+    const providerId = await this.ownershipService.getManagedProviderId(user);
     const booking = await this.createProviderBookingQuery()
       .leftJoinAndSelect('booking.statusLogs', 'statusLog')
       .where('booking.id = :bookingId', { bookingId })
@@ -412,7 +412,7 @@ export class BookingsService {
     bookingId: string,
   ) {
     return this.dataSource.transaction(async (manager) => {
-      const providerId = await this.resolveManagedProviderId(user, manager);
+      const providerId = await this.ownershipService.getManagedProviderId(user, manager);
       const bookingsRepository = manager.getRepository(Booking);
       const bookingLogsRepository =
         manager.getRepository(BookingStatusLog);
@@ -505,7 +505,7 @@ export class BookingsService {
     dto?: RejectBookingDto,
   ) {
     return this.dataSource.transaction(async (manager) => {
-      const providerId = await this.resolveManagedProviderId(user, manager);
+      const providerId = await this.ownershipService.getManagedProviderId(user, manager);
       const bookingsRepository = manager.getRepository(Booking);
       const bookingLogsRepository =
         manager.getRepository(BookingStatusLog);
@@ -570,44 +570,6 @@ export class BookingsService {
     );
   }
 
-  private async resolveManagedProviderId(
-    user: AuthenticatedUser,
-    manager: EntityManager = this.dataSource.manager,
-  ): Promise<string> {
-    const providersRepository = manager.getRepository(Provider);
-
-    if (user.role === 'PROVIDER_OWNER') {
-      const provider = await providersRepository.findOne({
-        where: { ownerId: user.id },
-      });
-
-      if (!provider) {
-        throw new NotFoundException('Provider profile not found');
-      }
-
-      return provider.id;
-    }
-
-    if (user.role === 'PROVIDER_STAFF') {
-      const staffRepository = manager.getRepository(ProviderStaff);
-      const staff = await staffRepository.findOne({
-        where: { userId: user.id, status: 'ACTIVE' },
-      });
-
-      if (!staff) {
-        throw new ForbiddenException(
-          'Active provider staff association is required',
-        );
-      }
-
-      return staff.providerId;
-    }
-
-    throw new ForbiddenException(
-      'You do not have permission to manage provider bookings',
-    );
-  }
-
   private async transitionConfirmedProviderBooking(
     user: AuthenticatedUser,
     bookingId: string,
@@ -615,7 +577,7 @@ export class BookingsService {
     reason: string | null,
   ) {
     return this.dataSource.transaction(async (manager) => {
-      const providerId = await this.resolveManagedProviderId(user, manager);
+      const providerId = await this.ownershipService.getManagedProviderId(user, manager);
       const bookingsRepository = manager.getRepository(Booking);
       const bookingLogsRepository =
         manager.getRepository(BookingStatusLog);

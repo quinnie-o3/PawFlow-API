@@ -1,6 +1,7 @@
 import { ForbiddenException } from '@nestjs/common';
 import type { DataSource, Repository } from 'typeorm';
 
+import { createOwnershipService } from '../../test/helpers/ownership-service';
 import { AvailabilityService } from '../availability/availability.service';
 import { AvailabilitySlot } from '../availability/entities/availability-slot.entity';
 import { ServiceCategory } from '../services/entities/service-category.entity';
@@ -62,7 +63,7 @@ describe('Provider lifecycle policy (C-02)', () => {
         const service = new ServicesService(
           servicesRepository as unknown as Repository<Service>,
           categoriesRepository as unknown as Repository<ServiceCategory>,
-          { findOne: jest.fn().mockResolvedValue(provider) } as unknown as Repository<Provider>,
+          createOwnershipService({ provider: { findOne: jest.fn().mockResolvedValue(provider) } }),
         );
 
         await expect(
@@ -90,7 +91,7 @@ describe('Provider lifecycle policy (C-02)', () => {
         const service = new ServicesService(
           servicesRepository as unknown as Repository<Service>,
           {} as Repository<ServiceCategory>,
-          { findOne: jest.fn().mockResolvedValue(provider) } as unknown as Repository<Provider>,
+          createOwnershipService({ provider: { findOne: jest.fn().mockResolvedValue(provider) } }),
         );
 
         await expect(service.getMyServices(ownerUserId)).resolves.toEqual([]);
@@ -105,7 +106,7 @@ describe('Provider lifecycle policy (C-02)', () => {
         const servicesRepository = { findOne: jest.fn() };
         const availability = new AvailabilityService(
           slotsRepository as unknown as Repository<AvailabilitySlot>,
-          { findOne: jest.fn().mockResolvedValue(provider) } as unknown as Repository<Provider>,
+          createOwnershipService({ provider: { findOne: jest.fn().mockResolvedValue(provider) } }),
           servicesRepository as unknown as Repository<Service>,
         );
 
