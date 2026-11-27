@@ -1,4 +1,4 @@
-import { Body, Controller, Get, type INestApplication, Post, UseGuards, ValidationPipe } from '@nestjs/common';
+import { Body, Controller, Get, type INestApplication, Post, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { JwtModule, JwtService } from '@nestjs/jwt';
@@ -11,6 +11,7 @@ import request from 'supertest';
 import { DataSource } from 'typeorm';
 
 import { activeSessionRepository, sessionIdFor } from '../../../test/helpers/auth-session-fixture';
+import { Public } from '../../auth/decorators/public.decorator';
 import { AuthSession } from '../../auth/entities/auth-session.entity';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { ApiRateLimitGuard, ApiUserRateLimitInterceptor } from '../../auth/rate-limit/api-rate-limit';
@@ -35,34 +36,36 @@ class NameDto {
 
 @Controller('probe')
 class ProbeController {
+  @Public()
   @Get('ok')
   ok() {
     return { ok: true };
   }
 
+  @Public()
   @Get('limited')
   limited(): never {
     throw new RateLimitedException(7);
   }
 
+  @Public()
   @Get('boom')
   boom(): never {
     throw new Error('internal detail with secret value');
   }
 
+  @Public()
   @Post('body')
   body(@Body() dto: NameDto) {
     return dto;
   }
 
   @Get('secure')
-  @UseGuards(JwtAuthGuard)
   secure() {
     return { secure: true };
   }
 
   @Post('secure')
-  @UseGuards(JwtAuthGuard)
   secureWrite() {
     return { written: true };
   }
@@ -91,6 +94,7 @@ async function harness(trustProxy: false | string[], hstsMaxAgeSeconds = 31_536_
       { provide: DataSource, useValue: { query } },
       { provide: SchemaStatusService, useValue: schema },
       { provide: APP_GUARD, useClass: ApiRateLimitGuard },
+      { provide: APP_GUARD, useClass: JwtAuthGuard },
       { provide: APP_INTERCEPTOR, useClass: ApiUserRateLimitInterceptor },
     ],
   }).compile();

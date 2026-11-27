@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common/constants';
 import type { Repository } from 'typeorm';
 
+import { createOwnershipService } from '../../test/helpers/ownership-service';
 import { ROLES_KEY } from '../auth/decorators/roles.decorator';
 import { ParseBigIntIdPipe } from '../common/pipes/parse-bigint-id.pipe';
 import { Provider } from '../providers/entities/provider.entity';
@@ -111,7 +112,7 @@ function createController(rows: Row[]) {
   const servicesService = new ServicesService(
     servicesRepository as unknown as Repository<Service>,
     {} as Repository<ServiceCategory>,
-    {} as Repository<Provider>,
+    createOwnershipService(),
   );
 
   return new PublicServicesController(servicesService);

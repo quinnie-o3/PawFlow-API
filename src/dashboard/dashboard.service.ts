@@ -1,13 +1,12 @@
 import {
   BadRequestException,
   Injectable,
-  NotFoundException,
 } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 
+import { OwnershipService } from '../auth/authorization/ownership.service';
 import { Booking } from '../bookings/entities/booking.entity';
 import { Payment } from '../payments/entities/payment.entity';
-import { Provider } from '../providers/entities/provider.entity';
 import { Review } from '../reviews/entities/review.entity';
 import { DashboardQueryDto } from './dto/dashboard-query.dto';
 import { DashboardDssService } from './dashboard-dss.service';
@@ -34,6 +33,7 @@ export class DashboardService {
   constructor(
     private readonly dataSource: DataSource,
     private readonly dashboardDssService: DashboardDssService,
+    private readonly ownershipService: OwnershipService,
   ) {}
 
   async getProviderDashboard(
@@ -42,7 +42,7 @@ export class DashboardService {
   ) {
     this.validateReportingPeriod(query);
 
-    const provider = await this.getOwnedProvider(ownerUserId);
+    const provider = await this.ownershipService.getOwnedProvider(ownerUserId);
 
     const [
       bookingVolumeByStatus,
@@ -94,26 +94,6 @@ export class DashboardService {
     };
   }
 
-  private async getOwnedProvider(
-    ownerUserId: string,
-  ): Promise<Provider> {
-    const providersRepository =
-      this.dataSource.getRepository(Provider);
-
-    const provider = await providersRepository.findOne({
-      where: {
-        ownerId: ownerUserId,
-      },
-    });
-
-    if (!provider) {
-      throw new NotFoundException(
-        'Provider profile not found',
-      );
-    }
-
-    return provider;
-  }
 
   private async getBookingVolumeByStatus(
     providerId: string,

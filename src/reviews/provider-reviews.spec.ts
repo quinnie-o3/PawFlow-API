@@ -9,19 +9,24 @@ import { HTTP_CODE_METADATA, METHOD_METADATA, PATH_METADATA } from '@nestjs/comm
 import { RequestMethod } from '@nestjs/common';
 import type { DataSource } from 'typeorm';
 
+import {
+  OwnershipService,
+  PROVIDER_PROFILE_NOT_FOUND,
+  STAFF_ASSOCIATION_REQUIRED,
+} from '../auth/authorization/ownership.service';
 import { ROLES_KEY } from '../auth/decorators/roles.decorator';
 import type { AuthenticatedUser } from '../auth/interfaces/authenticated-user.interface';
 import { GLOBAL_VALIDATION_PIPE_OPTIONS } from '../common/pipes/validation-pipe.options';
+import { ProviderStaff } from '../providers/entities/provider-staff.entity';
+import { Provider } from '../providers/entities/provider.entity';
 import { assertProviderCanRespondToReviews } from '../providers/provider-lifecycle.policy';
 import { CreateReviewResponseDto } from './dto/create-review-response.dto';
 import { ProviderReviewListQueryDto } from './dto/provider-review-list-query.dto';
 import { ProviderReviewsController } from './provider-reviews.controller';
 import {
-  PROVIDER_PROFILE_NOT_FOUND,
   REVIEW_ALREADY_RESPONDED,
   REVIEW_HIDDEN_CONFLICT,
   REVIEW_NOT_FOUND,
-  STAFF_ASSOCIATION_REQUIRED,
   ProviderReviewsService,
 } from './provider-reviews.service';
 import { codePointLength, normalizeReviewResponseText } from './review-response-text';
@@ -74,8 +79,6 @@ function harness(initial: State = {}) {
   const query = jest.fn((sql: string, params: unknown[] = []) => {
     calls.push({ sql, params });
     const one = <T>(value: T | null | undefined) => Promise.resolve(value ? [value] : []);
-    if (sql.includes('FROM providers WHERE owner_id')) return one(state.provider);
-    if (sql.includes('FROM provider_staff')) return one(state.staff);
     if (sql.includes('FOR UPDATE OF r')) return one(state.review);
     if (sql.includes('FROM providers WHERE id = $1 FOR SHARE')) return one(state.lockedProvider);
     if (sql.includes('FROM users WHERE id = $1 FOR SHARE')) return one(state.account);
@@ -85,7 +88,25 @@ function harness(initial: State = {}) {
     if (sql.includes('count(*)::int AS total')) return Promise.resolve([{ total: 1 }]);
     return Promise.resolve([ROW]);
   });
-  const manager = { query };
+  // OwnershipService resolves the caller's provider through repositories;
+  // record those lookups in `calls` like SQL so ordering assertions see them.
+  const lookup = (sql: string, params: unknown[], row: unknown) => {
+    calls.push({ sql, params });
+    return Promise.resolve(row ?? null);
+  };
+  const getRepository = (entity: unknown) => ({
+    findOne: ({ where }: { where: Record<string, unknown> }) =>
+      entity === Provider
+        ? lookup('FROM providers WHERE owner_id = $1', [where.ownerId], state.provider && {
+          id: state.provider.id, approvalStatus: state.provider.approval_status,
+        })
+        : entity === ProviderStaff
+          ? lookup(`FROM provider_staff WHERE user_id = $1 AND status = '${String(where.status)}'`, [where.userId], state.staff && {
+            providerId: state.staff.provider_id,
+          })
+          : Promise.reject(new Error('unexpected repository')),
+  });
+  const manager = { query, getRepository };
   const dataSource = {
     manager,
     query,
@@ -100,7 +121,12 @@ function harness(initial: State = {}) {
               : sql.includes('UPDATE reviews') ? 'write'
                 : sql.includes('FROM providers WHERE owner_id') ? 'provider:resolve'
                   : 'read');
-  return { service: new ProviderReviewsService(dataSource), calls, kinds, state };
+  return {
+    service: new ProviderReviewsService(dataSource, new OwnershipService(dataSource)),
+    calls,
+    kinds,
+    state,
+  };
 }
 
 const LIST_DEFAULTS = { page: 1, limit: 20, visibility: 'all', responded: 'all', sort: 'newest' } as const;

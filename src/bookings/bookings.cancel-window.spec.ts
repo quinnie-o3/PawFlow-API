@@ -1,6 +1,7 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import type { DataSource } from 'typeorm';
 
+import { OwnershipService } from '../auth/authorization/ownership.service';
 import { AvailabilitySlot } from '../availability/entities/availability-slot.entity';
 import type { BookingEventsService } from './booking-events.service';
 import { BookingsService } from './bookings.service';
@@ -84,6 +85,7 @@ describe('BookingsService.cancelMyBooking cancellation window (BR-07)', () => {
     bookings = new BookingsService(
       dataSource as unknown as DataSource,
       { record } as unknown as BookingEventsService,
+      new OwnershipService(dataSource as unknown as DataSource),
     );
   });
 

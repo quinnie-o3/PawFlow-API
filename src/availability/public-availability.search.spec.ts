@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common/constants';
 import type { DataSource, Repository } from 'typeorm';
 
+import { createOwnershipService } from '../../test/helpers/ownership-service';
 import {
   captureQueries,
   type CapturedQuery,
@@ -17,7 +18,6 @@ import {
 } from '../../test/helpers/offline-query-capture';
 import { GLOBAL_VALIDATION_PIPE_OPTIONS } from '../common/pipes/validation-pipe.options';
 import { getCurrentTimeOfDayString } from '../common/utils/calendar-date.util';
-import { Provider } from '../providers/entities/provider.entity';
 import { Service } from '../services/entities/service.entity';
 import { AvailabilityService } from './availability.service';
 import { PublicAvailabilitySearchQueryDto } from './dto/public-availability-search-query.dto';
@@ -167,7 +167,7 @@ describe('AvailabilityService.searchPublicSlots', () => {
     capture = captureQueries(result);
     const service = new AvailabilityService(
       dataSource.getRepository(AvailabilitySlot),
-      {} as Repository<Provider>,
+      createOwnershipService(),
       {} as Repository<Service>,
     );
 

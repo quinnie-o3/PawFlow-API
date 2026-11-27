@@ -6,12 +6,11 @@ import {
   type NestInterceptor,
   SetMetadata,
 } from '@nestjs/common';
-import { GUARDS_METADATA } from '@nestjs/common/constants';
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 import { from, type Observable, switchMap } from 'rxjs';
 
-import { JwtAuthGuard } from '../guards/jwt-auth.guard';
+import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import type { ApiRateLimitScope } from './auth-rate-limit.config';
 import { AuthRateLimitService } from './auth-rate-limit.service';
 
@@ -31,8 +30,10 @@ const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
  * it bounds unauthenticated floods (including 401 token guessing) per
  * client IP. `request.ip` honours TRUST_PROXY only: X-Forwarded-For,
  * CF-Connecting-IP and similar headers from an untrusted peer are ignored.
- * Routes without JwtAuthGuard (the public catalogue and auth entry points)
- * additionally count against the `public` policy.
+ * Routes marked `@Public()` (the public catalogue and auth entry points)
+ * additionally count against the `public` policy. This must use the same
+ * metadata as the global JwtAuthGuard, so a route is "public" here exactly
+ * when it is reachable without a token.
  */
 @Injectable()
 export class ApiRateLimitGuard implements CanActivate {
@@ -46,8 +47,8 @@ export class ApiRateLimitGuard implements CanActivate {
     const targets = [context.getHandler(), context.getClass()];
     if (this.reflector.getAllAndOverride<boolean>(SKIP_API_RATE_LIMIT, targets)) return true;
 
-    const guards = targets.flatMap((t) => (Reflect.getMetadata(GUARDS_METADATA, t) as unknown[] | undefined) ?? []);
-    const scopes: ApiRateLimitScope[] = guards.includes(JwtAuthGuard) ? ['api'] : ['api', 'public'];
+    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, targets) === true;
+    const scopes: ApiRateLimitScope[] = isPublic ? ['api', 'public'] : ['api'];
     const request = context.switchToHttp().getRequest<Request>();
     await this.rateLimits.consumeApi(scopes, { ip: request.ip });
     return true;

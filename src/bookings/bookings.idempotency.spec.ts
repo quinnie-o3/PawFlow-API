@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import type { DataSource } from 'typeorm';
 
+import { OwnershipService } from '../auth/authorization/ownership.service';
 import { AvailabilitySlot } from '../availability/entities/availability-slot.entity';
 import { Pet } from '../pets/entities/pet.entity';
 import { ProviderWorkingHour } from '../providers/entities/provider-working-hour.entity';
@@ -214,7 +215,11 @@ function createHarness() {
     events,
     failures,
     relations,
-    bookings: new BookingsService(dataSource as unknown as DataSource, { record: jest.fn().mockResolvedValue(undefined) } as unknown as BookingEventsService),
+    bookings: new BookingsService(
+      dataSource as unknown as DataSource,
+      { record: jest.fn().mockResolvedValue(undefined) } as unknown as BookingEventsService,
+      new OwnershipService(dataSource as unknown as DataSource),
+    ),
   };
 }
 

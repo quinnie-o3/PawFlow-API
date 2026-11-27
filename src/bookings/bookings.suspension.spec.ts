@@ -1,6 +1,10 @@
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import type { DataSource } from 'typeorm';
 
+import {
+  OwnershipService,
+  PROVIDER_RESOURCE_FORBIDDEN,
+} from '../auth/authorization/ownership.service';
 import type { AuthenticatedUser } from '../auth/interfaces/authenticated-user.interface';
 import { AvailabilitySlot } from '../availability/entities/availability-slot.entity';
 import { ProviderStaff } from '../providers/entities/provider-staff.entity';
@@ -131,7 +135,11 @@ function createHarness(approvalStatus: Status) {
     state,
     events,
     writes,
-    bookings: new BookingsService(dataSource as unknown as DataSource, { record: jest.fn().mockResolvedValue(undefined) } as unknown as BookingEventsService),
+    bookings: new BookingsService(
+      dataSource as unknown as DataSource,
+      { record: jest.fn().mockResolvedValue(undefined) } as unknown as BookingEventsService,
+      new OwnershipService(dataSource as unknown as DataSource),
+    ),
     status: (id: string) => state.bookings.find((row) => row.id === id)!.status,
   };
 }
@@ -324,7 +332,7 @@ describe('Provider suspension and booking lifecycle (P2-09A)', () => {
 
   it.each([
     ['inactive staff', INACTIVE_STAFF, 'Active provider staff association is required'],
-    ['a customer', CUSTOMER, 'You do not have permission to manage provider bookings'],
+    ['a customer', CUSTOMER, PROVIDER_RESOURCE_FORBIDDEN],
   ])('rejects %s with 403 before touching any booking', async (_label, user, message) => {
     const h = createHarness('APPROVED');
 

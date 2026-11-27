@@ -1,6 +1,7 @@
 import { NotFoundException } from '@nestjs/common';
 import { DataSource, SelectQueryBuilder } from 'typeorm';
 
+import { OwnershipService } from '../auth/authorization/ownership.service';
 import {
   bookingEntityFixture,
   CUSTOMER_VIEW_OF_FIXTURE,
@@ -175,7 +176,11 @@ describe('BookingsService view loading (P2-08B)', () => {
       },
     } as unknown as BookingEventsService;
 
-    return new BookingsService(dataSource as unknown as DataSource, bookingEvents);
+    return new BookingsService(
+      dataSource as unknown as DataSource,
+      bookingEvents,
+      new OwnershipService(dataSource as unknown as DataSource),
+    );
   }
 
   const selected = (sql: string) =>
